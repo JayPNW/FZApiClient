@@ -1,0 +1,14 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/auth/me",
+      "headers": {
+        "Cookie": "fz.sid=test-session"
+      },
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": null
+}

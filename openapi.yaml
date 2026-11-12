@@ -1,0 +1,5419 @@
+openapi: 3.1.0
+info:
+  title: Frostreaver.zone API
+  version: 0.1.0
+  summary: Zone bonuses, raid parses, rankings and guilds for the Fangbreaker and Frostreaver EverQuest servers.
+  description: |
+    The API behind [fangbreaker.zone](https://fangbreaker.zone) and [frostreaver.zone](https://frostreaver.zone):
+
+    - **Resource Hunter**: each zone's daily bonus, and its history.
+    - **Raid parses**: encounter reports uploaded by fzClient, with rankings, characters and guild progression.
+    - **Accounts and guilds**: the website's own features, behind a Discord login.
+
+    ## Authentication
+
+    Most reads are public. The rest use one of these:
+
+    - **API key** (`X-API-Key` header): for programs like fzClient that upload on a user's behalf. Only the
+      `/api/client/...` operations take it. Everything sent with a key counts as that user doing it on the website.
+    - **Session cookie**: set when a user signs in on the website with Discord, through `GET /api/auth/discord`.
+      Everything else that needs a signed-in user takes this.
+
+    ## Hosts and servers
+
+    Both hosts serve the same API and the same data for every server, so
+    `https://frostreaver.zone/api/servers/fangbreaker/bonuses/today` works too.
+
+    Each server has its own list of bonus types and its own list of zones, so always ask for the server you mean.
+    `GET /api/servers` lists the servers.
+
+    ## Envelope
+
+    Every response body under `/api/` is JSON wrapped in an envelope:
+
+    - Success: `{"ok": true, "data": ...}`
+    - Failure: `{"ok": false, "error": "Human-readable message"}`
+
+    `GET /api/health` is the one exception; see that operation.
+
+    A request for a route that doesn't exist gets `404` with an error like `Route not found: GET /api/nope`.
+
+    ## Names, not IDs
+
+    A report names the server by its `name` from `GET /api/servers`, the zone by its `name` from
+    `GET /api/servers/{server}/bonuses/zones`, and the bonus by its `key` from
+    `GET /api/servers/{server}/bonuses/types`. Zone names in EverQuest's own log files often differ from these, so
+    clients need their own mapping, and it has to be per server: the same log zone name can mean a different zone on
+    each server.
+
+    ## The bonus day
+
+    A bonus is for one day, and days follow the calendar in the `America/Los_Angeles` time zone: a new day starts at
+    midnight Pacific time, which is 08:00 UTC in winter and 07:00 UTC in summer. "Today" in this API means the current
+    day by that clock, and `bonusDate` values are dates by that clock. Some responses give `bonusDate` as a date-time
+    at midnight UTC, such as `2026-11-12T00:00:00.000Z`; its date part is the bonus day, and its time means nothing.
+
+    ## Caching
+
+    `GET` responses carry a weak `ETag`. Send it back in `If-None-Match` to get `304 Not Modified` with no body when
+    nothing has changed. Responses have no `Cache-Control` header.
+
+    ## Browsers
+
+    Cross-origin browser requests are allowed only from the site's own origins, so a web page on another site can't
+    call this API from the browser. Desktop programs, scripts and servers aren't affected.
+  contact:
+    name: Frostreaver.zone
+    url: https://frostreaver.zone
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://frostreaver.zone
+  - url: https://fangbreaker.zone
+tags:
+  - name: Status
+    description: Is the API up?
+  - name: Servers
+    description: The EverQuest servers the site tracks.
+  - name: Bonuses
+    description: Resource Hunter's daily zone bonuses. Public, read-only.
+  - name: Bonus moderation
+    description: "The website's own bonus actions: reporting, removing, and flagging other users' actions. Needs a signed-in user."
+  - name: Client
+    description: Uploads from fzClient and similar programs. Needs an API key, and counts as the key's owner doing the same thing on the website.
+  - name: Reports
+    description: "Raid reports: the encounters uploaded from one raid night, and who took part."
+  - name: Rankings
+    description: Damage and healing rankings across uploaded encounters.
+  - name: Characters
+    description: EverQuest characters seen in uploaded encounters.
+  - name: Guilds
+    description: Guilds, their members and their uploads.
+  - name: Progression
+    description: Which raid bosses and objectives each guild has done.
+  - name: Auth
+    description: Signing in to the website with Discord.
+  - name: Account
+    description: The signed-in user's own settings, including their API key.
+paths:
+  /api/health:
+    get:
+      tags: [ Status ]
+      operationId: getHealth
+      security: []
+      summary: Check that the API is up
+      description: Unlike every other operation, the response has no `data`; it has `status` instead.
+      responses:
+        '200':
+          description: The API is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                ok: true
+                status: healthy
+  /api/servers:
+    get:
+      tags: [ Servers ]
+      operationId: getServers
+      security: []
+      summary: The EverQuest servers the site tracks
+      responses:
+        '200':
+          description: The servers.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [ servers ]
+                        properties:
+                          servers:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Server'
+              example:
+                ok: true
+                data:
+                  servers:
+                    - id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                      aliases: []
+                      isActive: true
+                      createdAt: '2026-05-21T01:14:14.954Z'
+                      updatedAt: '2026-05-28T06:15:54.288Z'
+                    - id: 2
+                      name: Frostreaver
+                      slug: frostreaver
+                      aliases: []
+                      isActive: true
+                      createdAt: '2026-05-21T01:14:18.474Z'
+                      updatedAt: '2026-05-21T01:14:18.474Z'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/types:
+    get:
+      tags: [ Bonuses ]
+      operationId: getBonusTypes
+      security: []
+      summary: The kinds of bonus a zone can have on this server
+      description: |
+        Sorted by `sortOrder`. Includes `none`, for a zone that has no bonus today. Doesn't include `unconfirmed`, which
+        only appears in `today`.
+
+        A bonus type has the same `id` and `key` on every server; servers differ only in which types they have.
+      parameters:
+        - $ref: '#/components/parameters/Server'
+      responses:
+        '200':
+          description: The server's bonus types.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BonusType'
+              example:
+                ok: true
+                data:
+                  - id: 87b99f7c-af3e-4b01-96ed-b8ec015612f1
+                    key: experience
+                    label: Experience
+                    sortOrder: 10
+                  - id: 5cd4260c-9531-48d5-9b62-a9dfc9c6ed21
+                    key: rare
+                    label: Rare Spawn
+                    sortOrder: 50
+                  - id: 9c7c3f71-8094-44d9-b041-7df50b4e001e
+                    key: none
+                    label: No Bonus
+                    sortOrder: 999
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ServerNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/zones:
+    get:
+      tags: [ Bonuses ]
+      operationId: getZones
+      security: []
+      summary: The zones that can have a bonus on this server
+      description: |
+        Each server has its own list, and the same place in the game can be a different zone on different servers,
+        with its own `id`, `slug`, `name` and levels. For example, Fangbreaker has `Temple of Cazic-Thule (2.0)` and
+        `Lair of the Splitpaw` where Frostreaver has `Temple of Cazic-Thule` and `Splitpaw`.
+      parameters:
+        - $ref: '#/components/parameters/Server'
+      responses:
+        '200':
+          description: The server's zones.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Zone'
+              example:
+                ok: true
+                data:
+                  - id: c9b0852f-cacd-48f8-8cab-affb47b5b4c0
+                    slug: befallen
+                    name: Befallen
+                    expansionId: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                    expansion: Classic
+                    expansionSlug: classic
+                    minLevel: 5
+                    maxLevel: 20
+                    zoneType: Indoor
+                    legacyZoneId: 2
+                    isActive: true
+                    createdAt: '2026-05-22T21:09:57.304Z'
+                    updatedAt: '2026-05-22T21:09:57.304Z'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ServerNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/today:
+    get:
+      tags: [ Bonuses ]
+      operationId: getTodaysBonuses
+      security: []
+      summary: Today's bonus in every zone on this server
+      description: |
+        One entry for each of the server's zones, sorted by zone name, ignoring case. A zone nobody has reported today
+        is still listed, with `bonus` set to `unconfirmed` and `state` set to `UNCONFIRMED`.
+
+        Clients should tolerate a zone appearing more than once.
+
+        Always today, in the sense of [the bonus day](#section/The-bonus-day); there's no parameter for another day.
+      parameters:
+        - $ref: '#/components/parameters/Server'
+      responses:
+        '200':
+          description: Today's bonuses.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ZoneBonusToday'
+              example:
+                ok: true
+                data:
+                  - id: null
+                    zoneId: 38bd03f2-006f-49c1-ab10-267831ec9760
+                    zoneSlug: abysmal-sea
+                    name: Abysmal Sea
+                    expansion: Gates of Discord
+                    expansionId: 2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3
+                    expansionSlug: gates-of-discord
+                    minLevel: 1
+                    maxLevel: 75
+                    zoneType: Outdoor
+                    bonusTypeId: null
+                    bonus: unconfirmed
+                    bonusLabel: Unconfirmed
+                    state: UNCONFIRMED
+                    bonusDate: '2026-11-12'
+                    pendingRemovalBy: null
+                  - id: c460f872-a5c2-455f-b63f-22ed6edbd7f4
+                    zoneId: 6488a2c2-e609-437d-8758-957e1b07732c
+                    zoneSlug: acrylia-caverns
+                    name: Acrylia Caverns
+                    expansion: Shadows of Luclin
+                    expansionId: c65e4be7-9f05-4381-86cd-6b03ec875bdc
+                    expansionSlug: shadows-of-luclin
+                    minLevel: 40
+                    maxLevel: 60
+                    zoneType: Indoor
+                    bonusTypeId: 5cd4260c-9531-48d5-9b62-a9dfc9c6ed21
+                    bonus: rare
+                    bonusLabel: Rare Spawn
+                    state: ACTIVE
+                    bonusDate: '2026-11-12'
+                    pendingRemovalBy: null
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ServerNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/history/date:
+    get:
+      tags: [ Bonuses ]
+      operationId: getBonusesOnDate
+      security: []
+      summary: Every zone's bonus on a past day
+      description: |
+        Like `today`, but for any day, and listing only zones someone reported that day. Removed bonuses aren't
+        listed. Without `date`, the list is empty.
+      parameters:
+        - $ref: '#/components/parameters/Server'
+        - name: date
+          in: query
+          description: The bonus day, in the sense of [the bonus day](#section/The-bonus-day).
+          schema:
+            type: string
+            format: date
+            examples: [ '2026-11-11' ]
+      responses:
+        '200':
+          description: The bonuses reported that day.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ZoneBonusToday'
+              example:
+                ok: true
+                data:
+                  - id: c7868097-7266-42a4-a84e-87215dcf8d64
+                    zoneId: 8de71326-2b5a-4db2-b5fa-348ff0ab24a8
+                    zoneSlug: akanon
+                    name: "Ak'Anon"
+                    expansion: Classic
+                    expansionId: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                    expansionSlug: classic
+                    minLevel: 1
+                    maxLevel: 15
+                    zoneType: Indoor
+                    bonusTypeId: 2ca1653f-5610-41d4-b131-7d6ba4b75448
+                    bonus: tribute
+                    bonusLabel: Tribute
+                    state: ACTIVE
+                    bonusDate: '2026-11-11'
+                    pendingRemovalBy: null
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          $ref: '#/components/responses/BadDate'
+        '404':
+          $ref: '#/components/responses/ServerNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/history/logs:
+    get:
+      tags: [ Bonuses ]
+      operationId: getBonusActionsOnDate
+      security: []
+      summary: Everything people did to bonuses on a day
+      description: |
+        Each report, removal and other action for that bonus day, with who did it. Reports sent with an API key have
+        `metadata.source` set to `client_log_signal`.
+      parameters:
+        - $ref: '#/components/parameters/Server'
+        - name: date
+          in: query
+          required: true
+          description: The bonus day, in the sense of [the bonus day](#section/The-bonus-day).
+          schema:
+            type: string
+            format: date
+            examples: [ '2026-11-10' ]
+      responses:
+        '200':
+          description: The actions, oldest first.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BonusAction'
+              example:
+                ok: true
+                data:
+                  - id: 00000000-0000-4000-8000-000000000001
+                    serverId: 1
+                    zoneId: be27703f-28c8-4fde-ad5d-6fb3e691e070
+                    zoneBonusId: 24c0ef76-a47f-4b16-8709-79d27f0130ca
+                    bonusTypeId: fa365f41-8ec6-4a1a-96ec-d42f651bd01e
+                    actorId: 00000000-0000-4000-8000-000000000002
+                    actionType: ADD
+                    bonusDate: '2026-11-10T00:00:00.000Z'
+                    reason: null
+                    metadata:
+                      source: client_log_signal
+                      bonusKey: aa
+                    createdAt: '2026-11-10T09:26:20.200Z'
+                    actor:
+                      id: 00000000-0000-4000-8000-000000000002
+                      username: ExampleUser
+                      role: MEMBER
+                    zone:
+                      id: be27703f-28c8-4fde-ad5d-6fb3e691e070
+                      slug: wall-of-slaughter
+                      name: Wall of Slaughter
+                      expansionId: 935d6206-7c25-4559-a321-406a8648d584
+                      minLevel: 65
+                      maxLevel: 75
+                      zoneType: null
+                      legacyZoneId: null
+                      isActive: true
+                      createdAt: '2026-07-24T15:57:13.740Z'
+                      updatedAt: '2026-07-24T15:57:13.740Z'
+                    bonusType:
+                      id: fa365f41-8ec6-4a1a-96ec-d42f651bd01e
+                      key: aa
+                      label: AA
+                      sortOrder: 20
+                      isSystem: true
+                      createdAt: '2026-05-21T01:14:20.470Z'
+                      updatedAt: '2026-11-13T01:37:57.738Z'
+                    isReportable: true
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          description: '`date` is missing or isn''t a date.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing:
+                  value:
+                    ok: false
+                    error: Query string date is required
+                malformed:
+                  value:
+                    ok: false
+                    error: Date must be formatted as YYYY-MM-DD
+        '404':
+          $ref: '#/components/responses/ServerNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/zones/{zoneSlug}/history:
+    get:
+      tags: [ Bonuses ]
+      operationId: getZoneBonusHistory
+      security: []
+      summary: One zone's bonus on every day it was reported
+      parameters:
+        - $ref: '#/components/parameters/Server'
+        - name: zoneSlug
+          in: path
+          required: true
+          description: A zone's `slug` from `zones`.
+          schema:
+            type: string
+            examples: [ befallen ]
+      responses:
+        '200':
+          description: The zone, its history, newest first, and how often it had each bonus.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ZoneBonusHistory'
+              example:
+                ok: true
+                data:
+                  zone:
+                    id: c9b0852f-cacd-48f8-8cab-affb47b5b4c0
+                    slug: befallen
+                    name: Befallen
+                    expansionId: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                    expansion: Classic
+                    expansionSlug: classic
+                    minLevel: 5
+                    maxLevel: 20
+                    zoneType: Indoor
+                    legacyZoneId: 2
+                    isActive: true
+                    createdAt: '2026-05-22T21:09:57.304Z'
+                    updatedAt: '2026-05-22T21:09:57.304Z'
+                  history:
+                    - id: 53425c74-8813-49d5-a510-0e30000e06e0
+                      bonusDate: '2026-11-12'
+                      bonus: none
+                      bonusLabel: No Bonus
+                      state: ACTIVE
+                  stats:
+                    - bonusTypeId: 5cd4260c-9531-48d5-9b62-a9dfc9c6ed21
+                      bonus: rare
+                      bonusLabel: Rare Spawn
+                      count: 47
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          description: No server, or no zone with that slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                server:
+                  value:
+                    ok: false
+                    error: Server not found
+                zone:
+                  value:
+                    ok: false
+                    error: Zone not found
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/servers/{server}/bonuses/zones/trends:
+    get:
+      tags: [ Bonuses ]
+      operationId: getZoneBonusTrends
+      security: []
+      summary: How often each zone has had each bonus
+      description: Every zone on the server, with a count of the days it had each bonus type.
+      parameters:
+        - $ref: '#/components/parameters/Server'
+        - name: expansion
+          in: query
+          description: |
+            Only zones from these expansions. Repeat the parameter for more than one. Uses the expansion's display
+            name, such as `Ruins of Kunark`, not its slug; an unknown name matches no zones.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+            examples: [ [ Classic, Ruins of Kunark ] ]
+        - name: startDate
+          in: query
+          description: Count only days on or after this bonus day.
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: Count only days on or before this bonus day.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: The counts.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ZoneBonusTrends'
+              example:
+                ok: true
+                data:
+                  bonusTypes:
+                    - id: 87b99f7c-af3e-4b01-96ed-b8ec015612f1
+                      key: experience
+                      label: Experience
+                      sortOrder: 10
+                  zones:
+                    - id: 8de71326-2b5a-4db2-b5fa-348ff0ab24a8
+                      slug: akanon
+                      name: "Ak'Anon"
+                      expansion: Classic
+                      expansionId: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                      expansionSlug: classic
+                      minLevel: 1
+                      maxLevel: 15
+                      zoneType: Indoor
+                      counts:
+                        experience: 0
+                        rare: 1
+                        none: 78
+                      total: 90
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          $ref: '#/components/responses/BadDate'
+        '404':
+          $ref: '#/components/responses/ServerNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/client/bonuses:
+    post:
+      tags: [ Client ]
+      operationId: reportBonus
+      summary: Report today's bonus in a zone
+      description: |
+        Reports the bonus for today, in the sense of [the bonus day](#section/The-bonus-day). Server names, zone names
+        and bonus keys are matched regardless of case.
+
+        Sending the same report again is harmless: the site ignores a report that doesn't change anything, and says so
+        with `updated: false`.
+
+        Bans and timeouts on the key owner's account apply here just as they do on the website.
+      security:
+        - ApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BonusReport'
+            example:
+              serverName: Fangbreaker
+              zoneName: Bastion of Thunder
+              bonusKey: experience
+      responses:
+        '200':
+          description: The report was accepted.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BonusReportResult'
+              example:
+                ok: true
+                data:
+                  updated: false
+                  zoneBonus:
+                    id: c460f872-a5c2-455f-b63f-22ed6edbd7f4
+                    serverId: 1
+                    zoneId: 6488a2c2-e609-437d-8758-957e1b07732c
+                    bonusTypeId: 5cd4260c-9531-48d5-9b62-a9dfc9c6ed21
+                    bonusDate: '2026-11-12T00:00:00.000Z'
+                    state: ACTIVE
+                    createdById: 00000000-0000-4000-8000-000000000003
+                    removedById: null
+                    removedAt: null
+                    legacyBonusId: null
+                    createdAt: '2026-11-12T18:45:41.720Z'
+                    updatedAt: '2026-11-12T18:45:41.720Z'
+        '400':
+          description: |
+            A field is missing or isn't a string, or the bonus key isn't one of the server's bonus types. `unconfirmed`
+            counts as not one of them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing:
+                  value:
+                    ok: false
+                    error: serverName, zoneName, and bonusKey are required
+                bonus:
+                  value:
+                    ok: false
+                    error: Bonus type is not enabled for this server
+        '401':
+          $ref: '#/components/responses/ApiKeyRequired'
+        '403':
+          description: The key owner's account is banned or timed out.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: |
+            No server with that name, or the zone isn't on that server's list. A zone that's only on another server's
+            list gets this too.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                server:
+                  value:
+                    ok: false
+                    error: Server not found
+                zone:
+                  value:
+                    ok: false
+                    error: Zone not found or not enabled for this server
+        '500':
+          $ref: '#/components/responses/ServerErrorOrBadJson'
+  /api/client/encounters/finalized:
+    post:
+      tags: [ Client ]
+      operationId: uploadEncounter
+      summary: Upload a finished raid encounter
+      description: |
+        Uploads the damage and healing summary of one fight, as parsed from the key owner's EverQuest log. The site
+        adds it to a report, which then appears in the raid-parse operations.
+
+        Field names are snake_case, unlike the rest of the API.
+
+        The success response isn't documented: fzClient ignores it and checks only the status code. Not verified
+        against the live API.
+      security:
+        - ApiKey: []
+      parameters:
+        - name: X-Guild-Code
+          in: header
+          description: |
+            A guild's upload code, to credit the encounter to that guild's official logs. Leave it out for personal
+            uploads. Guild officers manage upload codes on the website.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncounterSummaryUpload'
+      responses:
+        '2XX':
+          description: The encounter was accepted.
+        '401':
+          $ref: '#/components/responses/ApiKeyRequired'
+        '403':
+          description: The key owner's account is banned or timed out. Not verified against the live API.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/ServerErrorOrBadJson'
+  /api/encounters/{id}:
+    get:
+      tags:
+        - Reports
+      operationId: getEncounter
+      security: []
+      summary: One encounter, with its participants and the uploads it was merged from
+      description: |
+        An encounter is one fight in a raid report. `participants` lists everyone who dealt or healed damage, pets
+        included. `submissions` lists the uploads that were merged into the encounter.
+      parameters:
+        - $ref: "#/components/parameters/EncounterId"
+      responses:
+        "200":
+          description: The encounter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - encounter
+                        properties:
+                          encounter:
+                            $ref: "#/components/schemas/EncounterDetail"
+              example:
+                ok: true
+                data:
+                  encounter:
+                    id: 00000000-0000-4000-8000-000000000004
+                    reportId: 00000000-0000-4000-8000-000000000005
+                    zone: Tacvi, Seat of the Slaver
+                    targetName: on Pixtt Kretv Krakxt
+                    startedAt: 2026-06-23T18:59:04.000Z
+                    endedAt: 2026-06-23T18:59:04.000Z
+                    durationSec: 1
+                    result: UNKNOWN
+                    totalDamage: 384
+                    dps: 384
+                    totalHealing: 0
+                    hps: 0
+                    playerCount: 1
+                    rankingEligible: false
+                    rankingIneligibleReason: UNMATCHED_RAID_BOSS
+                    participantCount: 1
+                    contributorCount: 1
+                    coverageLabel: single-pov
+                    server:
+                      id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                    guild:
+                      id: 00000000-0000-4000-8000-000000000006
+                      name: Second Example Guild
+                      slug: second-example-guild
+                    raidBoss: null
+                    raidTier: null
+                    rankingPartition: null
+                    createdAt: 2026-06-23T18:59:05.628Z
+                    updatedAt: 2026-06-23T18:59:05.628Z
+                    participants:
+                      - id: 00000000-0000-4000-8000-000000000007
+                        name: Examplechar
+                        damage: 384
+                        dps: 384
+                        healing: 0
+                        hps: 0
+                        topAbility: Frenzy
+                        topHealAbility: Unknown
+                        hitCount: 2
+                        healCount: 0
+                        critPercent: 0
+                        healCritPercent: 0
+                        isPlayer: true
+                        participantKind: PLAYER
+                        ownerName: null
+                        character:
+                          id: 00000000-0000-4000-8000-000000000008
+                          name: Examplechar
+                          normalizedName: examplechar
+                          className: null
+                          level: null
+                          isPet: false
+                          ownerName: null
+                        ownerCharacter: null
+                        parseRecord: null
+                        healingParseRecord: null
+                        parseRecords: []
+                        metrics:
+                          displayDamage: 384
+                          damageSharePercent: 0
+                          displayHealing: 0
+                          healingSharePercent: 0
+                          directDamage: 384
+                          petDamage: 0
+                          totalDamage: 384
+                          directHitCount: 2
+                          petHitCount: 0
+                          totalHitCount: 2
+                          directHealing: 0
+                          petHealing: 0
+                          totalHealing: 0
+                          directHealCount: 0
+                          petHealCount: 0
+                          totalHealCount: 0
+                          hps: 0
+                    submissions:
+                      - id: 00000000-0000-4000-8000-000000000009
+                        clientEncounterId: 450a4fe551304dab95a16e53eb3d2261
+                        receivedAt: 2026-06-23T18:59:05.635Z
+                        mergedAt: 2026-06-23T18:59:05.634Z
+                        uploadedBy:
+                          id: 00000000-0000-4000-8000-000000000010
+                          username: ExampleOfficer
+                        reportUpload:
+                          id: 00000000-0000-4000-8000-000000000011
+                          destination: GUILD
+                          visibility: PUBLIC
+                          clientVersion: 1.0.0
+                          integrityStatus: NOT_CHECKED
+                          rankingEligible: true
+                          rankingIneligibleReason: null
+                          receivedAt: 2026-06-23T18:59:05.615Z
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/reports/{id}:
+    get:
+      tags:
+        - Reports
+      operationId: getReport
+      security: []
+      summary: A raid report and its encounters
+      description: |
+        A report is a raid night: all the uploads for one guild's raid, merged. The response is large for a busy
+        report, because it includes every encounter.
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - report
+                          - encounters
+                        properties:
+                          report:
+                            $ref: "#/components/schemas/Report"
+                          encounters:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/EncounterSummary"
+              example:
+                ok: true
+                data:
+                  report:
+                    id: 00000000-0000-4000-8000-000000000005
+                    name: Exampletwo
+                    displayName: Exampletwo
+                    visibility: PUBLIC
+                    startedAt: 2026-06-23T17:55:36.000Z
+                    endedAt: 2026-06-23T18:59:04.000Z
+                    firstUploadAt: 2026-06-23T17:55:43.783Z
+                    lastUploadAt: 2026-06-23T18:59:05.615Z
+                    uploadCount: 1581
+                    submissionCount: 1581
+                    encounterCount: 320
+                    server:
+                      id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                    guild:
+                      id: 00000000-0000-4000-8000-000000000006
+                      name: Second Example Guild
+                      slug: second-example-guild
+                    createdBy:
+                      id: 00000000-0000-4000-8000-000000000010
+                      username: ExampleOfficer
+                    createdAt: 2026-06-23T17:55:43.796Z
+                    updatedAt: 2026-06-23T18:59:05.625Z
+                    isInvalid: false
+                    isHidden: false
+                    moderatedAt: null
+                    moderatedById: null
+                    moderationReason: null
+                    deletedAt: null
+                    deletedById: null
+                    deleteReason: null
+                    openContentReportCount: 0
+                  encounters:
+                    - id: 00000000-0000-4000-8000-000000000004
+                      reportId: 00000000-0000-4000-8000-000000000005
+                      zone: Tacvi, Seat of the Slaver
+                      targetName: on Pixtt Kretv Krakxt
+                      startedAt: 2026-06-23T18:59:04.000Z
+                      endedAt: 2026-06-23T18:59:04.000Z
+                      durationSec: 1
+                      result: UNKNOWN
+                      totalDamage: 384
+                      dps: 384
+                      totalHealing: 0
+                      hps: 0
+                      playerCount: 1
+                      rankingEligible: false
+                      rankingIneligibleReason: UNMATCHED_RAID_BOSS
+                      participantCount: 1
+                      contributorCount: 1
+                      coverageLabel: single-pov
+                      server:
+                        id: 1
+                        name: Fangbreaker
+                        slug: fangbreaker
+                      guild:
+                        id: 00000000-0000-4000-8000-000000000006
+                        name: Second Example Guild
+                        slug: second-example-guild
+                      raidBoss: null
+                      raidTier: null
+                      rankingPartition: null
+                      createdAt: 2026-06-23T18:59:05.628Z
+                      updatedAt: 2026-06-23T18:59:05.628Z
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    patch:
+      tags:
+        - Reports
+      operationId: renameReport
+      summary: Rename a log report
+      description: |
+        Changes the name shown for a log report.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The report's id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags:
+        - Reports
+      operationId: deleteReport
+      summary: Delete a log report
+      description: |
+        The request has a JSON body, which is unusual for DELETE.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The report's id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/reports/{id}/encounters:
+    get:
+      tags:
+        - Reports
+      operationId: getReportEncounters
+      security: []
+      summary: The encounters in a raid report
+      description: The same `encounters` array that `GET /api/reports/{id}` returns, without the report itself.
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      responses:
+        "200":
+          description: The report's encounters.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - encounters
+                        properties:
+                          encounters:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/EncounterSummary"
+              example:
+                ok: true
+                data:
+                  encounters:
+                    - id: 00000000-0000-4000-8000-000000000004
+                      reportId: 00000000-0000-4000-8000-000000000005
+                      zone: Tacvi, Seat of the Slaver
+                      targetName: on Pixtt Kretv Krakxt
+                      startedAt: 2026-06-23T18:59:04.000Z
+                      endedAt: 2026-06-23T18:59:04.000Z
+                      durationSec: 1
+                      result: UNKNOWN
+                      totalDamage: 384
+                      dps: 384
+                      totalHealing: 0
+                      hps: 0
+                      playerCount: 1
+                      rankingEligible: false
+                      rankingIneligibleReason: UNMATCHED_RAID_BOSS
+                      participantCount: 1
+                      contributorCount: 1
+                      coverageLabel: single-pov
+                      server:
+                        id: 1
+                        name: Fangbreaker
+                        slug: fangbreaker
+                      guild:
+                        id: 00000000-0000-4000-8000-000000000006
+                        name: Second Example Guild
+                        slug: second-example-guild
+                      raidBoss: null
+                      raidTier: null
+                      rankingPartition: null
+                      createdAt: 2026-06-23T18:59:05.628Z
+                      updatedAt: 2026-06-23T18:59:05.628Z
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/reports/{id}/participants:
+    get:
+      tags:
+        - Reports
+      operationId: getReportParticipants
+      security: []
+      summary: The participants of a raid report
+      description: |
+        Not verified against the live API beyond an empty list: the report tried returned `participants: []`, so the
+        shape of an item is not known. Items are likely to look like the participants in
+        `GET /api/encounters/{id}`.
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      responses:
+        "200":
+          description: The report's participants.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - participants
+                        properties:
+                          participants:
+                            type: array
+                            items:
+                              type: object
+              example:
+                ok: true
+                data:
+                  participants: []
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/rankings/all-stars:
+    get:
+      tags:
+        - Rankings
+      operationId: getAllStarRankings
+      security: []
+      summary: All-star standings for a ranking partition
+      description: |
+        `serverId` and `rankingPartitionId` are required. Get the partition IDs from
+        `GET /api/servers/{server}/progression`: use a partition's `rankingPartitionId`, not its `id`. A missing one
+        gets `400` with `serverId is required` or `rankingPartitionId is required`, and a partition the server doesn't
+        have gets `400` with `Ranking partition is not configured for this server`.
+
+        Not verified against the live API beyond an empty result: no standings existed when this was written, so the
+        shape of a standing is not known.
+      parameters:
+        - $ref: "#/components/parameters/RankServerId"
+        - $ref: "#/components/parameters/RankingPartitionId"
+        - $ref: "#/components/parameters/ExpansionId"
+        - $ref: "#/components/parameters/RankMetric"
+        - $ref: "#/components/parameters/SnapshotDate"
+        - $ref: "#/components/parameters/RankLimit"
+        - $ref: "#/components/parameters/RankPage"
+        - $ref: "#/components/parameters/ClassName"
+      responses:
+        "200":
+          description: The standings.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AllStarStandings"
+              example:
+                ok: true
+                data:
+                  snapshot: null
+                  filters:
+                    serverId: 1
+                    rankingPartitionId: 7c328539-6206-4e09-aad7-c51f57206fd2
+                    metric: DAMAGE
+                    expansionId: null
+                  standings: []
+                  totalStandings: 0
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/rankings/all-stars/boss/{boss}:
+    get:
+      tags:
+        - Rankings
+      operationId: getAllStarBossRankings
+      security: []
+      summary: All-star standings for one boss
+      description: |
+        Takes the same query as `GET /api/rankings/all-stars`, and `serverId` and `rankingPartitionId` are required
+        here too. `boss` is a raid boss `id` from `GET /api/servers/{server}/progression`.
+
+        Not verified against the live API beyond an empty result.
+      parameters:
+        - $ref: "#/components/parameters/Boss"
+        - $ref: "#/components/parameters/RankServerId"
+        - $ref: "#/components/parameters/RankingPartitionId"
+        - $ref: "#/components/parameters/ExpansionId"
+        - $ref: "#/components/parameters/RankMetric"
+        - $ref: "#/components/parameters/SnapshotDate"
+        - $ref: "#/components/parameters/RankLimit"
+        - $ref: "#/components/parameters/RankPage"
+        - $ref: "#/components/parameters/ClassName"
+      responses:
+        "200":
+          description: The standings for the boss, with paging.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/AllStarStandings"
+                          - type: object
+                            required:
+                              - page
+                              - pageSize
+                              - totalPages
+                            properties:
+                              page:
+                                type: integer
+                              pageSize:
+                                type: integer
+                              totalPages:
+                                type: integer
+              example:
+                ok: true
+                data:
+                  snapshot: null
+                  filters:
+                    serverId: 1
+                    rankingPartitionId: 7c328539-6206-4e09-aad7-c51f57206fd2
+                    metric: DAMAGE
+                  standings: []
+                  totalStandings: 0
+                  page: 1
+                  pageSize: 2
+                  totalPages: 1
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/rankings/boss/{boss}:
+    get:
+      tags:
+        - Rankings
+      operationId: getBossRankings
+      security: []
+      summary: Top parses for one boss
+      description: |
+        `boss` is a raid boss `id`. The ranking partition has to include the boss's expansion, or the response is
+        `400` with `Raid boss expansion is not available in the selected ranking partition`. The site reads a
+        `rankings` array from `data`.
+
+        Not verified against the live API. No rankings existed when this was written, so the shape of `data` is not
+        known.
+      parameters:
+        - $ref: "#/components/parameters/Boss"
+        - $ref: "#/components/parameters/RankServerId"
+        - $ref: "#/components/parameters/RankingPartitionId"
+        - name: characterClass
+          in: query
+          description: Only parses by this class.
+          schema:
+            type: string
+        - name: officialOnly
+          in: query
+          description: Only parses from official uploads.
+          schema:
+            type: boolean
+        - name: guildId
+          in: query
+          description: Only parses by members of this guild. A guild `id`.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/RankLimit"
+        - $ref: "#/components/parameters/RankMetric"
+      responses:
+        "200":
+          description: The boss rankings.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          rankings:
+                            type: array
+                            items:
+                              type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/characters/{id}:
+    get:
+      tags:
+        - Characters
+      operationId: getCharacter
+      security: []
+      summary: A character and its parse summary
+      description: |
+        `metric` picks whether the parse data is for damage or healing. `permissions.canManageClass` is whether the
+        caller may change the character's class, so it is `false` without a session.
+
+        The arrays `bestParseTiers`, `expansionGroups`, `allStarRanks` and `recentParses` were empty in the character
+        tried, so their items are not described. Not verified against the live API.
+      parameters:
+        - $ref: "#/components/parameters/CharacterId"
+        - $ref: "#/components/parameters/ParseMetric"
+      responses:
+        "200":
+          description: The character.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - metric
+                          - metricLabel
+                          - character
+                          - classOptions
+                          - permissions
+                          - bestParseTiers
+                          - expansionGroups
+                          - allStarRanks
+                          - recentParses
+                        properties:
+                          metric:
+                            $ref: "#/components/schemas/ParseMetric"
+                          metricLabel:
+                            type: string
+                            examples:
+                              - damage
+                          character:
+                            $ref: "#/components/schemas/CharacterProfile"
+                          classOptions:
+                            type: array
+                            description: The classes a character can be set to.
+                            items:
+                              type: string
+                          permissions:
+                            type: object
+                            required:
+                              - canManageClass
+                            properties:
+                              canManageClass:
+                                type: boolean
+                          bestParseTiers:
+                            type: array
+                            items:
+                              type: object
+                          expansionGroups:
+                            type: array
+                            items:
+                              type: object
+                          allStarRanks:
+                            type: array
+                            items:
+                              type: object
+                          recentParses:
+                            type: array
+                            items:
+                              type: object
+              example:
+                ok: true
+                data:
+                  metric: DAMAGE
+                  metricLabel: damage
+                  character:
+                    id: 00000000-0000-4000-8000-000000000008
+                    name: Examplechar
+                    normalizedName: examplechar
+                    className: null
+                    classSource: null
+                    classConfidence: null
+                    classLocked: false
+                    classUpdatedAt: null
+                    level: null
+                    isPet: false
+                    ownerName: null
+                    server:
+                      id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                    guild: null
+                    counts:
+                      damageParses: 0
+                      healingParses: 0
+                    createdAt: 2026-06-23T17:58:12.876Z
+                    updatedAt: 2026-06-23T18:59:05.630Z
+                  classOptions:
+                    - Bard
+                    - Cleric
+                    - Druid
+                    - Enchanter
+                    - Magician
+                    - Monk
+                    - Necromancer
+                    - Paladin
+                    - Ranger
+                    - Rogue
+                    - Shadow Knight
+                    - Shaman
+                    - Warrior
+                    - Wizard
+                    - Beastlord
+                    - Berserker
+                  permissions:
+                    canManageClass: false
+                  bestParseTiers: []
+                  expansionGroups: []
+                  allStarRanks: []
+                  recentParses: []
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/characters/{id}/bosses/{bossId}/parses:
+    get:
+      tags:
+        - Characters
+      operationId: getCharacterBossParses
+      security: []
+      summary: A character's parses on one boss
+      description: The items of `parses` were empty in the character tried, so they are not described. Not verified against the live API.
+      parameters:
+        - $ref: "#/components/parameters/CharacterId"
+        - name: bossId
+          in: path
+          required: true
+          description: A raid boss `id`.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/ParseMetric"
+      responses:
+        "200":
+          description: The character's parses on the boss.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - metric
+                          - metricLabel
+                          - character
+                          - raidBoss
+                          - raidTier
+                          - expansion
+                          - parses
+                        properties:
+                          metric:
+                            $ref: "#/components/schemas/ParseMetric"
+                          metricLabel:
+                            type: string
+                          character:
+                            $ref: "#/components/schemas/CharacterProfile"
+                          raidBoss:
+                            $ref: "#/components/schemas/IdSlugName"
+                          raidTier:
+                            $ref: "#/components/schemas/IdSlugName"
+                          expansion:
+                            $ref: "#/components/schemas/IdSlugName"
+                          parses:
+                            type: array
+                            items:
+                              type: object
+              example:
+                ok: true
+                data:
+                  metric: DAMAGE
+                  metricLabel: damage
+                  character:
+                    id: 00000000-0000-4000-8000-000000000008
+                    name: Examplechar
+                    normalizedName: examplechar
+                    className: null
+                    classSource: null
+                    classConfidence: null
+                    classLocked: false
+                    classUpdatedAt: null
+                    level: null
+                    isPet: false
+                    ownerName: null
+                    server:
+                      id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                    guild: null
+                    counts:
+                      damageParses: 0
+                      healingParses: 0
+                    createdAt: 2026-06-23T17:58:12.876Z
+                    updatedAt: 2026-06-23T18:59:05.630Z
+                  raidBoss:
+                    id: 05c960bb-fc49-4c94-a344-4f7c116e9b81
+                    name: Phinigel Autropos
+                    slug: classic-phinigel-autropos
+                  raidTier:
+                    id: 32f92ee5-e6cc-459b-8752-2a8af734418d
+                    name: Classic
+                    slug: classic
+                  expansion:
+                    id: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                    name: Classic
+                    slug: classic
+                  parses: []
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/servers/{server}/progression:
+    get:
+      tags:
+        - Progression
+      operationId: getServerProgression
+      security: []
+      summary: Raid progression and ranking setup for a server
+      description: |
+        `progression` lists every expansion, its raid tiers, and the objectives in each tier with their required
+        bosses and who killed them. `raidContent` is the catalogue behind it: expansions, raid tiers and ranking
+        partitions, and which partition is active. Ranking partition IDs for the rankings operations come from here.
+      parameters:
+        - $ref: "#/components/parameters/Server"
+        - name: guildId
+          in: query
+          description: A guild `id`. Meant to give that guild's kills. Not verified against the live API with data.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The server's progression.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ServerProgression"
+              example:
+                ok: true
+                data:
+                  server:
+                    id: 1
+                    slug: fangbreaker
+                    name: Fangbreaker
+                  progression:
+                    expansions:
+                      - id: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                        slug: classic
+                        name: Classic
+                        sortOrder: 10
+                        tiers:
+                          - id: 32f92ee5-e6cc-459b-8752-2a8af734418d
+                            slug: classic
+                            name: Classic
+                            sortOrder: 10
+                            rankingPartitions: []
+                            objectives:
+                              - id: 928ac5d2-57de-43ea-8391-689494e5672a
+                                slug: classic-raids
+                                name: Classic Raids
+                                description: null
+                                completionMode: ALL_REQUIRED
+                                requiredCount: null
+                                completionTarget: 6
+                                requiredBossCount: 6
+                                sortOrder: 10
+                                isActive: true
+                                isProgressionRelevant: true
+                                expansion:
+                                  id: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                                  slug: classic
+                                  name: Classic
+                                  sortOrder: 10
+                                raidTier:
+                                  id: 32f92ee5-e6cc-459b-8752-2a8af734418d
+                                  slug: classic
+                                  name: Classic
+                                  sortOrder: 10
+                                  rankingPartitions: []
+                                completionCount: 0
+                                firstCompletion: null
+                                topCompletions: []
+                                recentCompletions: []
+                                requiredBosses:
+                                  - id: ba35fd27-c752-471e-a203-08975111418e
+                                    sortOrder: 10
+                                    isRequired: true
+                                    killed: false
+                                    killedAt: null
+                                    firstKill: null
+                                    topKills: []
+                                    raidBoss:
+                                      id: 05c960bb-fc49-4c94-a344-4f7c116e9b81
+                                      slug: classic-phinigel-autropos
+                                      name: Phinigel Autropos
+                                      isProgressionRelevant: true
+                                      isLeaderboardRelevant: true
+                                      raidZone:
+                                        id: 96e41921-bd44-4981-8a55-635ee46656bf
+                                        slug: kedge-keep
+                                        name: Kedge Keep
+                                        shortName: null
+                  raidContent:
+                    activeRankingPartition:
+                      id: 5866f142-6d88-4f4d-af15-b63a5c06eaf5
+                      rankingPartitionId: 7c328539-6206-4e09-aad7-c51f57206fd2
+                      raidTierId: ba717425-8897-459e-b996-beaeff35f13f
+                      anchorExpansionId: 2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3
+                      slug: fangbreaker-god-era
+                      name: Gates of Discord Era
+                      sortOrder: 80
+                      globalIsDefault: false
+                      globalIsFrozen: false
+                      globalStartsAt: 2026-05-28T00:00:00.000Z
+                      globalEndsAt: null
+                      isActive: true
+                      isFrozen: false
+                      effectivelyFrozen: false
+                      startsAt: null
+                      endsAt: null
+                      notes: null
+                      anchorExpansion:
+                        id: 2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3
+                        slug: gates-of-discord
+                        name: Gates of Discord
+                        sortOrder: 80
+                      includedExpansions:
+                        - id: 2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3
+                          slug: gates-of-discord
+                          name: Gates of Discord
+                          sortOrder: 80
+                    expansions: []
+                    raidTiers: []
+                    rankingPartitions: []
+                    server:
+                      id: 1
+                      slug: fangbreaker
+                      name: Fangbreaker
+        "404":
+          $ref: "#/components/responses/ServerNotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/guilds:
+    get:
+      tags:
+        - Guilds
+      operationId: listGuilds
+      security: []
+      summary: The guilds on the site
+      description: |
+        Every guild, or only those on one server. The list is not paged. `counts.uploadCodes` and
+        `counts.inviteCodes` are numbers of codes, not the codes.
+      parameters:
+        - name: serverId
+          in: query
+          description: Only guilds on this server. A server `id` from `GET /api/servers`.
+          schema:
+            type: integer
+        - name: serverSlug
+          in: query
+          description: Only guilds on this server. A server `slug` from `GET /api/servers`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The guilds.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - guilds
+                        properties:
+                          guilds:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Guild"
+              example:
+                ok: true
+                data:
+                  guilds:
+                    - id: 00000000-0000-4000-8000-000000000012
+                      name: Example Guild
+                      slug: example-guild
+                      description: Raids Tuesday and Thursday nights.
+                      server:
+                        id: 1
+                        name: Fangbreaker
+                        slug: fangbreaker
+                      counts:
+                        uploads: 0
+                        encounters: 0
+                        members: 1
+                        uploadCodes: 0
+                        inviteCodes: 0
+                        bossKills: 0
+                        objectiveCompletions: 0
+                      createdAt: 2026-06-09T20:48:36.213Z
+                      updatedAt: 2026-06-09T20:49:30.268Z
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      tags:
+        - Guilds
+      operationId: createGuild
+      summary: Create a guild
+      description: |
+        The caller becomes the guild's owner.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuildRequest"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - guild
+                        properties:
+                          guild:
+                            $ref: "#/components/schemas/Guild"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}:
+    get:
+      tags:
+        - Guilds
+      operationId: getGuild
+      security: []
+      summary: A guild, its members and its recent activity
+      description: |
+        `guild` is the guild's `id`. The slug does not work here and gets `404 Guild not found`.
+
+        The member list is public and includes each member's username and site role. `uploadCodes`,
+        `recentBossKills` and `recentObjectiveCompletions` were empty in the guild tried, so their items are not
+        described. Not verified against the live API.
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: The guild.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - guild
+                          - members
+                          - uploadCodes
+                          - recentEncounters
+                          - recentBossKills
+                          - recentObjectiveCompletions
+                        properties:
+                          guild:
+                            $ref: "#/components/schemas/Guild"
+                          members:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/GuildMember"
+                          uploadCodes:
+                            type: array
+                            items:
+                              type: object
+                          recentEncounters:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/EncounterSummary"
+                          recentBossKills:
+                            type: array
+                            items:
+                              type: object
+                          recentObjectiveCompletions:
+                            type: array
+                            items:
+                              type: object
+              example:
+                ok: true
+                data:
+                  guild:
+                    id: 00000000-0000-4000-8000-000000000006
+                    name: Second Example Guild
+                    slug: second-example-guild
+                    description: null
+                    server:
+                      id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                    counts:
+                      uploads: 7787
+                      encounters: 1797
+                      members: 2
+                      uploadCodes: 1
+                      inviteCodes: 2
+                      bossKills: 0
+                      objectiveCompletions: 0
+                    createdAt: 2026-06-07T06:32:55.067Z
+                    updatedAt: 2026-06-22T06:45:36.971Z
+                  members:
+                    - id: 00000000-0000-4000-8000-000000000013
+                      role: OWNER
+                      user:
+                        id: 00000000-0000-4000-8000-000000000010
+                        username: ExampleOfficer
+                        role: MEMBER
+                      createdAt: 2026-06-07T06:32:55.078Z
+                      updatedAt: 2026-06-07T06:32:55.078Z
+                  uploadCodes: []
+                  recentEncounters: []
+                  recentBossKills: []
+                  recentObjectiveCompletions: []
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    put:
+      tags:
+        - Guilds
+      operationId: updateGuild
+      summary: Edit a guild's details
+      description: |
+        Needs the OWNER, ADMIN or OFFICER role in the guild. Changing `slug` changes the guild's public address.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - slug
+                - description
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                description:
+                  type: string
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - guild
+                        properties:
+                          guild:
+                            $ref: "#/components/schemas/Guild"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/roster:
+    get:
+      tags:
+        - Guilds
+      operationId: getGuildRoster
+      security: []
+      summary: The characters that raided with a guild
+      description: |
+        Counts of characters by class, and the characters themselves. `days` limits the roster to characters seen in
+        that many recent days. It has to be a positive integer, or the response is `400` with
+        `days must be a positive integer`.
+
+        Not verified against the live API beyond an empty roster: the items of `classCounts` and `characters` were not
+        observed. The site reads `className`, `count` and `label` from a `classCounts` item.
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: includePets
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The roster.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - guild
+                          - filters
+                          - classCounts
+                          - characters
+                          - totalCharacters
+                        properties:
+                          guild:
+                            $ref: "#/components/schemas/Guild"
+                          filters:
+                            type: object
+                            required:
+                              - days
+                              - includePets
+                              - limit
+                            properties:
+                              days:
+                                type: integer
+                              includePets:
+                                type: boolean
+                              limit:
+                                type: integer
+                          classCounts:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                className:
+                                  type:
+                                    - string
+                                    - "null"
+                                count:
+                                  type: integer
+                                label:
+                                  type: string
+                          characters:
+                            type: array
+                            items:
+                              type: object
+                          totalCharacters:
+                            type: integer
+              example:
+                ok: true
+                data:
+                  guild:
+                    id: 00000000-0000-4000-8000-000000000006
+                    name: Second Example Guild
+                    slug: second-example-guild
+                    description: null
+                    server:
+                      id: 1
+                      name: Fangbreaker
+                      slug: fangbreaker
+                    counts:
+                      uploads: 7787
+                      encounters: 1797
+                      members: 2
+                      uploadCodes: 1
+                      inviteCodes: 2
+                      bossKills: 0
+                      objectiveCompletions: 0
+                    createdAt: 2026-06-07T06:32:55.067Z
+                    updatedAt: 2026-06-22T06:45:36.971Z
+                  filters:
+                    days: 30
+                    includePets: false
+                    limit: 100
+                  classCounts: []
+                  characters: []
+                  totalCharacters: 0
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/guilds/{guild}/class-moderation:
+    get:
+      tags:
+        - Guilds
+      operationId: getGuildClassModeration
+      security:
+        - Session: []
+      summary: Characters whose class a guild may need to review
+      description: |
+        Needs a login. Without a session the response is `401` with `Authentication is required`. What a logged-in
+        caller needs and the response body were not observed. Not verified against the live API.
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: The moderation data. Not verified against the live API.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/guilds/{guild}/progression:
+    get:
+      tags:
+        - Progression
+      operationId: getGuildProgression
+      security: []
+      summary: A guild's raid objective progress
+      description: Like `GET /api/servers/{server}/progression`, for one guild. `guild` is the guild's `id`.
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: The guild's progression.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - progression
+                        properties:
+                          progression:
+                            type: object
+                            required:
+                              - guild
+                              - objectives
+                            properties:
+                              guild:
+                                type: object
+                                required:
+                                  - id
+                                  - name
+                                  - slug
+                                  - server
+                                properties:
+                                  id:
+                                    type: string
+                                    format: uuid
+                                  name:
+                                    type: string
+                                  slug:
+                                    type: string
+                                  server:
+                                    $ref: "#/components/schemas/ServerRef"
+                              objectives:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/GuildObjective"
+              example:
+                ok: true
+                data:
+                  progression:
+                    guild:
+                      id: 00000000-0000-4000-8000-000000000006
+                      name: Second Example Guild
+                      slug: second-example-guild
+                      server:
+                        id: 1
+                        name: Fangbreaker
+                        slug: fangbreaker
+                    objectives:
+                      - id: 928ac5d2-57de-43ea-8391-689494e5672a
+                        slug: classic-raids
+                        name: Classic Raids
+                        description: null
+                        completionMode: ALL_REQUIRED
+                        requiredCount: null
+                        completionTarget: 6
+                        requiredBossCount: 6
+                        killedRequiredCount: 0
+                        isComplete: false
+                        completedAt: null
+                        expansion:
+                          id: 1d0ee73f-7e7a-46bf-b691-8d3424751ab5
+                          slug: classic
+                          name: Classic
+                          sortOrder: 10
+                        raidTier:
+                          id: 32f92ee5-e6cc-459b-8752-2a8af734418d
+                          slug: classic
+                          name: Classic
+                          sortOrder: 10
+                        requiredBosses:
+                          - id: ba35fd27-c752-471e-a203-08975111418e
+                            sortOrder: 10
+                            isRequired: true
+                            killed: false
+                            killedAt: null
+                            firstKill: null
+                            topKills: []
+                            raidBoss:
+                              id: 05c960bb-fc49-4c94-a344-4f7c116e9b81
+                              slug: classic-phinigel-autropos
+                              name: Phinigel Autropos
+                              isProgressionRelevant: true
+                              isLeaderboardRelevant: true
+                              raidZone:
+                                id: 96e41921-bd44-4981-8a55-635ee46656bf
+                                slug: kedge-keep
+                                name: Kedge Keep
+                                shortName: null
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/guilds/{guild}/reports:
+    get:
+      tags:
+        - Guilds
+        - Reports
+      operationId: listGuildReports
+      security: []
+      summary: A guild's raid reports
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+        - $ref: "#/components/parameters/ReportLimit"
+        - $ref: "#/components/parameters/ReportServerSlug"
+        - $ref: "#/components/parameters/ReportServerId"
+        - $ref: "#/components/parameters/ReportGuildId"
+      responses:
+        "200":
+          description: The guild's reports.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - reports
+                        properties:
+                          reports:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Report"
+              example:
+                ok: true
+                data:
+                  reports:
+                    - id: 00000000-0000-4000-8000-000000000005
+                      name: Exampletwo
+                      displayName: Exampletwo
+                      visibility: PUBLIC
+                      startedAt: 2026-06-23T17:55:36.000Z
+                      endedAt: 2026-06-23T18:59:04.000Z
+                      firstUploadAt: 2026-06-23T17:55:43.783Z
+                      lastUploadAt: 2026-06-23T18:59:05.615Z
+                      uploadCount: 1581
+                      submissionCount: 1581
+                      encounterCount: 320
+                      server:
+                        id: 1
+                        name: Fangbreaker
+                        slug: fangbreaker
+                      guild:
+                        id: 00000000-0000-4000-8000-000000000006
+                        name: Second Example Guild
+                        slug: second-example-guild
+                      createdBy:
+                        id: 00000000-0000-4000-8000-000000000010
+                        username: ExampleOfficer
+                      createdAt: 2026-06-23T17:55:43.796Z
+                      updatedAt: 2026-06-23T18:59:05.625Z
+                      isInvalid: false
+                      isHidden: false
+                      moderatedAt: null
+                      moderatedById: null
+                      moderationReason: null
+                      deletedAt: null
+                      deletedById: null
+                      deleteReason: null
+                      openContentReportCount: 0
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/me/reports:
+    get:
+      tags:
+        - Reports
+      operationId: listMyReports
+      security:
+        - Session: []
+      summary: The signed-in user's raid reports
+      description: |
+        Needs a login. Without a session the response is `401` with `Authentication is required`. The response is
+        an object with `reports`, as for `GET /api/guilds/{guild}/reports`. Not verified against the live API.
+      parameters:
+        - $ref: "#/components/parameters/ReportLimit"
+        - $ref: "#/components/parameters/ReportServerSlug"
+        - $ref: "#/components/parameters/ReportServerId"
+        - $ref: "#/components/parameters/ReportGuildId"
+      responses:
+        "200":
+          description: The user's reports. Not verified against the live API.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - reports
+                        properties:
+                          reports:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/auth/discord:
+    get:
+      tags:
+        - Auth
+      operationId: startDiscordLogin
+      summary: Sign in with Discord
+      description: |
+        Redirects to Discord's OAuth page, asking for the `identify` scope. After sign-in Discord sends the browser back to `/api/auth/discord/callback`, and the site finishes the sign-in.
+
+        Meant for browsers: navigate to it, don't call it from a script.
+      security: []
+      responses:
+        "302":
+          description: Redirect to Discord. The response also sets the session cookie.
+          headers:
+            Location:
+              description: The Discord authorize URL.
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              description: Sets the session cookie, `fz.sid`.
+              schema:
+                type: string
+  /api/auth/me:
+    get:
+      tags:
+        - Auth
+      operationId: getCurrentUser
+      summary: Who is signed in
+      description: |
+        Without a session, `user` is `null`. That is not an error: the status is 200 either way.
+
+        The signed-in shape is not verified against the live API: it is described from what the website reads.
+      security: []
+      responses:
+        "200":
+          description: The signed-in user, or `null`.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - user
+                        properties:
+                          user:
+                            oneOf:
+                              - $ref: "#/components/schemas/SessionUser"
+                              - type: "null"
+              example:
+                ok: true
+                data:
+                  user: null
+  /api/auth/logout:
+    post:
+      tags:
+        - Auth
+      operationId: logout
+      summary: Sign out
+      description: |
+        Ends the session.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      responses:
+        "204":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/me/api-key:
+    get:
+      tags:
+        - Account
+      operationId: getApiKeyStatus
+      summary: Does the account have an API key
+      description: |
+        The key itself is never returned here, only a masked form. The full key is shown once, when it is created.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      responses:
+        "200":
+          description: Whether the account has a key.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ApiKeyStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Account
+      operationId: createApiKey
+      summary: Create or rotate the API key
+      description: |
+        Makes a new key and replaces any old one. This response is the only time the full key is shown. Use it as the `ApiKey` for `POST /api/client/bonuses`.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - apiKey
+                        properties:
+                          apiKey:
+                            type: string
+                            description: The full key. Shown once.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags:
+        - Account
+      operationId: revokeApiKey
+      summary: Revoke the API key
+      description: |
+        Disables the key, so client uploads stop working.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/me/guilds:
+    get:
+      tags:
+        - Account
+      operationId: getMyGuilds
+      summary: The guilds the account belongs to
+      description: "Not verified against the live API: the response is described from what the website reads."
+      security:
+        - Session: []
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - memberships
+                        properties:
+                          memberships:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/GuildMembership"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/join:
+    post:
+      tags:
+        - Guilds
+      operationId: joinGuild
+      summary: Join a guild with an invite code
+      description: "Not verified against the live API: the response is described from what the website reads."
+      security:
+        - Session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: An invite code from the guild's officers.
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - guild
+                        properties:
+                          guild:
+                            $ref: "#/components/schemas/Guild"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/leave:
+    post:
+      tags:
+        - Guilds
+      operationId: leaveGuild
+      summary: Leave a guild
+      description: Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/members:
+    put:
+      tags:
+        - Guilds
+      operationId: setGuildMember
+      summary: Add a member or change a member's role
+      description: |
+        Needs the OWNER, ADMIN or OFFICER role in the guild.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - role
+              properties:
+                userId:
+                  type: string
+                  description: The user to add or update.
+                role:
+                  $ref: "#/components/schemas/GuildRole"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - member
+                        properties:
+                          member:
+                            $ref: "#/components/schemas/GuildMember"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/members/{member}:
+    delete:
+      tags:
+        - Guilds
+      operationId: removeGuildMember
+      summary: Remove a member from a guild
+      description: Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+        - name: member
+          in: path
+          required: true
+          description: The member's `id`, as the guild page lists it.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/upload-codes:
+    get:
+      tags:
+        - Guilds
+      operationId: listUploadCodes
+      summary: List the guild's upload codes
+      description: |
+        An upload code lets fzClient send raid logs to the guild. Needs a guild role that can manage codes.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - uploadCodes
+                        properties:
+                          uploadCodes:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/UploadCode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Guilds
+      operationId: createUploadCode
+      summary: Create an upload code
+      description: |
+        An upload code lets fzClient send raid logs to the guild. The new code is returned once, in `code`.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  description: A name for the code, such as "Officer code". Optional.
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - uploadCode
+                        properties:
+                          uploadCode:
+                            $ref: "#/components/schemas/UploadCode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/upload-codes/{code}:
+    delete:
+      tags:
+        - Guilds
+      operationId: revokeUploadCode
+      summary: Revoke an upload code
+      description: |
+        Makes the code inactive.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+        - name: code
+          in: path
+          required: true
+          description: The code's `id`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - uploadCode
+                        properties:
+                          uploadCode:
+                            $ref: "#/components/schemas/UploadCode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/invite-codes:
+    get:
+      tags:
+        - Guilds
+      operationId: listInviteCodes
+      summary: List the guild's invite codes
+      description: |
+        An invite code lets a signed-in user join the guild. Needs a guild role that can manage codes.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - inviteCodes
+                        properties:
+                          inviteCodes:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/InviteCode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Guilds
+      operationId: createInviteCode
+      summary: Create an invite code
+      description: |
+        An invite code lets a signed-in user join the guild. The new code is returned once, in `code`.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  description: A name for the code, such as "Officer code". Optional.
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - inviteCode
+                        properties:
+                          inviteCode:
+                            $ref: "#/components/schemas/InviteCode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/guilds/{guild}/invite-codes/{code}:
+    delete:
+      tags:
+        - Guilds
+      operationId: revokeInviteCode
+      summary: Revoke an invite code
+      description: |
+        Makes the code inactive.
+
+        Not verified against the live API: the response is described from what the website reads.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+        - name: code
+          in: path
+          required: true
+          description: The code's `id`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - inviteCode
+                        properties:
+                          inviteCode:
+                            $ref: "#/components/schemas/InviteCode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/characters/{id}/class:
+    patch:
+      tags:
+        - Characters
+      operationId: setCharacterClass
+      summary: Set a character's class
+      description: |
+        The guild page uses this to approve a suggested class or override it. Needs a guild management role.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The character's id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - className
+              properties:
+                className:
+                  type: string
+                  description: The class name.
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/reports/{id}/report:
+    post:
+      tags:
+        - Reports
+      operationId: flagReport
+      summary: Report a log report to the moderators
+      description: |
+        Flags a log report for the site's admins. They see it in the content reports queue.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The report's id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/servers/{server}/bonuses:
+    post:
+      tags:
+        - Bonus moderation
+      operationId: addBonus
+      summary: Report a zone's bonus on the website
+      description: |
+        The website's version of `POST /api/client/bonuses`. It uses the session cookie and takes IDs instead of names.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/Server"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - zoneId
+                - bonusTypeId
+              properties:
+                zoneId:
+                  type: string
+                  format: uuid
+                bonusTypeId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/servers/{server}/bonuses/{zoneBonusId}/remove:
+    post:
+      tags:
+        - Bonus moderation
+      operationId: removeBonus
+      summary: Ask for a zone's bonus to be removed
+      description: |
+        Flags the bonus as wrong. Other players can confirm or cancel the removal.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/Server"
+        - name: zoneBonusId
+          in: path
+          required: true
+          description: The `id` of the zone bonus, from `bonuses/today`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/servers/{server}/bonuses/actions/{actionId}/report:
+    post:
+      tags:
+        - Bonus moderation
+      operationId: reportBonusAction
+      summary: Report a bonus action to the moderators
+      description: |
+        Flags someone else's add or remove for the site's moderators to review.
+
+        Not verified against the live API.
+      security:
+        - Session: []
+      parameters:
+        - $ref: "#/components/parameters/Server"
+        - name: actionId
+          in: path
+          required: true
+          description: The id of the bonus action.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Done. The site does not read a response body; it also treats 204 as success.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Each user creates their own key on the site's account page, after signing in with Discord. Keys begin with
+        `fz_live_`. The site shows the full key only once, when it's created or rotated; rotating or revoking a key
+        stops the old one from working.
+    Session:
+      type: apiKey
+      in: cookie
+      name: fz.sid
+      description: The session cookie. `GET /api/auth/discord` starts a Discord sign-in, and the site sets the cookie. It is HttpOnly, Secure and SameSite=Lax, so it is meant for browsers.
+  headers:
+    ETag:
+      description: A weak validator for the response. Send it in `If-None-Match` to get `304` when nothing has changed.
+      schema:
+        type: string
+        examples: [ 'W/"421-4TTIb7DNmX7H9zsTRc6FpQtEstU"' ]
+  parameters:
+    Server:
+      name: server
+      in: path
+      required: true
+      description: A server's `slug` from `GET /api/servers`. Case doesn't matter.
+      schema:
+        type: string
+        examples: [ fangbreaker, frostreaver ]
+    EncounterId:
+      name: id
+      in: path
+      required: true
+      description: An encounter `id`.
+      schema:
+        type: string
+        format: uuid
+    ReportId:
+      name: id
+      in: path
+      required: true
+      description: A report `id`.
+      schema:
+        type: string
+        format: uuid
+    CharacterId:
+      name: id
+      in: path
+      required: true
+      description: A character `id`.
+      schema:
+        type: string
+        format: uuid
+    GuildId:
+      name: guild
+      in: path
+      required: true
+      description: A guild `id` from `GET /api/guilds`. The `slug` is not accepted.
+      schema:
+        type: string
+        format: uuid
+    Boss:
+      name: boss
+      in: path
+      required: true
+      description: A raid boss `id`.
+      schema:
+        type: string
+        format: uuid
+    ParseMetric:
+      name: metric
+      in: query
+      description: Whether to use damage or healing parses. The default is `DAMAGE`.
+      schema:
+        $ref: "#/components/schemas/ParseMetric"
+    RankServerId:
+      name: serverId
+      in: query
+      required: true
+      description: A server `id` from `GET /api/servers`.
+      schema:
+        type: integer
+    RankingPartitionId:
+      name: rankingPartitionId
+      in: query
+      required: true
+      description: A ranking partition's `rankingPartitionId` from `GET /api/servers/{server}/progression`.
+      schema:
+        type: string
+        format: uuid
+    ExpansionId:
+      name: expansionId
+      in: query
+      description: Only this expansion. An expansion `id`.
+      schema:
+        type: string
+        format: uuid
+    RankMetric:
+      name: metric
+      in: query
+      description: Damage or healing. The default is `DAMAGE`.
+      schema:
+        $ref: "#/components/schemas/ParseMetric"
+    SnapshotDate:
+      name: snapshotDate
+      in: query
+      description: Show the standings from a past snapshot. Not verified against the live API.
+      schema:
+        type: string
+        format: date
+    RankLimit:
+      name: limit
+      in: query
+      description: How many results to return.
+      schema:
+        type: integer
+        minimum: 1
+    RankPage:
+      name: page
+      in: query
+      description: Which page of results, starting at 1.
+      schema:
+        type: integer
+        minimum: 1
+    ClassName:
+      name: className
+      in: query
+      description: Only this class, such as `Cleric`.
+      schema:
+        type: string
+    ReportLimit:
+      name: limit
+      in: query
+      description: The most reports to return.
+      schema:
+        type: integer
+        minimum: 1
+    ReportServerSlug:
+      name: serverSlug
+      in: query
+      description: Only reports on this server.
+      schema:
+        type: string
+    ReportServerId:
+      name: serverId
+      in: query
+      description: Only reports on this server. A server `id`.
+      schema:
+        type: integer
+    ReportGuildId:
+      name: guildId
+      in: query
+      description: Only reports of this guild. A guild `id`.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    NotModified:
+      description: The request's `If-None-Match` matches the current `ETag`, so there's no body.
+    ServerNotFound:
+      description: No server with that name.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            ok: false
+            error: Server not found
+    ServerError:
+      description: Something went wrong on the site.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            ok: false
+            error: Internal server error
+    BadDate:
+      description: A date isn't formatted as `YYYY-MM-DD`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            ok: false
+            error: Date must be formatted as YYYY-MM-DD
+    ApiKeyRequired:
+      description: The `X-API-Key` header is missing or empty, or the key isn't valid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            missing:
+              value:
+                ok: false
+                error: Missing X-API-Key header
+            invalid:
+              value:
+                ok: false
+                error: Invalid API key
+    ServerErrorOrBadJson:
+      description: Something went wrong on the site. A body that isn't valid JSON currently gets this response, not `400`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            ok: false
+            error: Internal server error
+    NotFound:
+      description: Nothing with that ID. The `error` says what, such as `Report not found`, `Encounter not found`, `Character not found` or `Guild not found`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            error: Report not found
+    BadRequest:
+      description: A query parameter is missing or not valid. The `error` says which.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            error: rankingPartitionId is required
+    Unauthorized:
+      description: The request has no session.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            error: Authentication is required
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [ ok, data ]
+      properties:
+        ok:
+          const: true
+        data: {}
+    ErrorEnvelope:
+      type: object
+      required: [ ok, error ]
+      properties:
+        ok:
+          const: false
+        error:
+          type: string
+          description: What went wrong, for a person to read.
+    Health:
+      type: object
+      required: [ ok, status ]
+      properties:
+        ok:
+          const: true
+        status:
+          type: string
+          examples: [ healthy ]
+    Server:
+      type: object
+      required: [ id, name, slug, aliases, isActive, createdAt, updatedAt ]
+      properties:
+        id:
+          type: integer
+          description: Matches `serverId` in a report's result.
+        name:
+          type: string
+          description: The name to use as `serverName` when reporting.
+          examples: [ Fangbreaker ]
+        slug:
+          type: string
+          description: The name to use in paths.
+          examples: [ fangbreaker ]
+        aliases:
+          type: array
+          description: Other names for the server.
+          items:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BonusKey:
+      type: string
+      description: |
+        A bonus type's `key`. The list differs between servers and can change, so get it from
+        `GET /api/servers/{server}/bonuses/types` instead of hard-coding it. Keys in use are `experience`, `aa`,
+        `item-exp`, `mercenary-exp`, `loot`, `coin`, `rare`, `faction`, `respawn`, `tribute`, `tradeskill` and `none`,
+        plus `unconfirmed`, which only appears in `today`.
+      examples: [ experience, none ]
+    BonusType:
+      type: object
+      required: [ id, key, label, sortOrder ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          $ref: '#/components/schemas/BonusKey'
+        label:
+          type: string
+          description: For display.
+          examples: [ Rare Spawn ]
+        sortOrder:
+          type: integer
+          description: Lower numbers come first when displayed.
+    Zone:
+      description: A zone, with its expansion's name.
+      allOf:
+        - $ref: '#/components/schemas/ZoneRecord'
+        - type: object
+          required: [ expansion, expansionSlug ]
+          properties:
+            expansion:
+              type: string
+              description: The expansion's name, for display.
+              examples: [ Classic, Ruins of Kunark ]
+            expansionSlug:
+              type: string
+              examples: [ classic, ruins-of-kunark ]
+    ZoneRecord:
+      description: A zone as the site stores it.
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - expansionId
+        - minLevel
+        - maxLevel
+        - zoneType
+        - legacyZoneId
+        - isActive
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          examples: [ befallen ]
+        name:
+          type: string
+          description: The name to use as `zoneName` when reporting.
+          examples: [ Befallen, "Ak'Anon", 'Ikkinz: Chambers of Destruction', 'Barindu, Hanging Gardens' ]
+        expansionId:
+          type: string
+          format: uuid
+        minLevel:
+          $ref: '#/components/schemas/Level'
+        maxLevel:
+          $ref: '#/components/schemas/Level'
+        zoneType:
+          $ref: '#/components/schemas/ZoneType'
+        legacyZoneId:
+          type: [ integer, 'null' ]
+          description: The zone's ID on the site before zones had UUIDs. Null for zones added since.
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Level:
+      type: [ integer, 'null' ]
+      description: A level bound for the zone. Null when the zone has no bound on that side.
+    ZoneType:
+      type: [ string, 'null' ]
+      description: '`Indoor`, `Outdoor`, or null when not known.'
+      examples: [ Indoor, Outdoor ]
+    ZoneBonusToday:
+      type: object
+      required:
+        - id
+        - zoneId
+        - zoneSlug
+        - name
+        - expansion
+        - expansionId
+        - expansionSlug
+        - minLevel
+        - maxLevel
+        - zoneType
+        - bonusTypeId
+        - bonus
+        - bonusLabel
+        - state
+        - bonusDate
+        - pendingRemovalBy
+      properties:
+        id:
+          type: [ string, 'null' ]
+          format: uuid
+          description: The zone bonus's ID. Null when nobody has reported the zone today.
+        zoneId:
+          type: string
+          format: uuid
+          description: Matches a zone's `id` from `zones`.
+        zoneSlug:
+          type: string
+          description: Matches a zone's `slug` from `zones`.
+        name:
+          type: string
+          description: Matches a zone's `name` from `zones`.
+        expansion:
+          type: string
+        expansionId:
+          type: string
+          format: uuid
+        expansionSlug:
+          type: string
+        minLevel:
+          $ref: '#/components/schemas/Level'
+        maxLevel:
+          $ref: '#/components/schemas/Level'
+        zoneType:
+          $ref: '#/components/schemas/ZoneType'
+        bonusTypeId:
+          type: [ string, 'null' ]
+          format: uuid
+          description: Matches a bonus type's `id` from `types`. Null when nobody has reported the zone today.
+        bonus:
+          $ref: '#/components/schemas/BonusKey'
+        bonusLabel:
+          type: string
+          description: For display.
+        state:
+          $ref: '#/components/schemas/ZoneBonusState'
+        bonusDate:
+          type: string
+          format: date
+          description: The day the bonus is for, in the sense of [the bonus day](#section/The-bonus-day).
+        pendingRemovalBy:
+          description: Reserved for the site's removal process. Currently always null; clients should ignore it.
+    ZoneBonusState:
+      type: string
+      description: |
+        - `ACTIVE`: someone reported this bonus today. This includes a report of `none`.
+        - `UNCONFIRMED`: nobody has reported the zone today.
+
+        Clients should treat any other value as `UNCONFIRMED`.
+      examples: [ ACTIVE, UNCONFIRMED ]
+    BonusReport:
+      type: object
+      required: [ serverName, zoneName, bonusKey ]
+      properties:
+        serverName:
+          type: string
+          description: A server's `name` from `GET /api/servers`, capitalized as it is there.
+          examples: [ Fangbreaker, Frostreaver ]
+        zoneName:
+          type: string
+          description: A zone's `name` from `GET /api/servers/{server}/bonuses/zones`.
+          examples: [ Bastion of Thunder ]
+        bonusKey:
+          allOf:
+            - $ref: '#/components/schemas/BonusKey'
+          description: A `key` from `GET /api/servers/{server}/bonuses/types`, including `none` for no bonus. Not `unconfirmed`.
+    BonusReportResult:
+      type: object
+      required: [ updated, zoneBonus ]
+      properties:
+        updated:
+          type: boolean
+          description: False when the site already showed this bonus for the zone, so nothing changed.
+        zoneBonus:
+          description: The zone's bonus after the report. Can be empty.
+          anyOf:
+            - $ref: '#/components/schemas/ZoneBonus'
+            - type: object
+              maxProperties: 0
+    ZoneBonus:
+      type: object
+      description: One zone's bonus on one day, as the site stores it.
+      required:
+        - id
+        - serverId
+        - zoneId
+        - bonusTypeId
+        - bonusDate
+        - state
+        - createdById
+        - removedById
+        - removedAt
+        - legacyBonusId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Matches `id` in `today`.
+        serverId:
+          type: integer
+          description: Matches a server's `id` from `GET /api/servers`.
+        zoneId:
+          type: string
+          format: uuid
+        bonusTypeId:
+          type: string
+          format: uuid
+        bonusDate:
+          $ref: '#/components/schemas/BonusDateTime'
+        state:
+          $ref: '#/components/schemas/ZoneBonusState'
+        createdById:
+          type: string
+          format: uuid
+          description: The user who first reported this bonus.
+        removedById:
+          type: [ string, 'null' ]
+          format: uuid
+          description: The user who removed this bonus, if anyone did.
+        removedAt:
+          type: [ string, 'null' ]
+          format: date-time
+        legacyBonusId:
+          type: [ integer, 'null' ]
+          description: The bonus's ID on the site before bonuses had UUIDs. Null for bonuses added since.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BonusDateTime:
+      type: string
+      format: date-time
+      description: A [bonus day](#section/The-bonus-day), as midnight UTC on that date. Only the date part means anything.
+      examples: [ '2026-11-12T00:00:00.000Z' ]
+    BonusTypeRecord:
+      description: A bonus type with the site's bookkeeping fields.
+      allOf:
+        - $ref: '#/components/schemas/BonusType'
+        - type: object
+          required: [ isSystem, createdAt, updatedAt ]
+          properties:
+            isSystem:
+              type: boolean
+              description: True for the bonus types built into the site.
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    UserSummary:
+      type: object
+      description: Who did something. Public.
+      required: [ id, username, role ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          description: The user's display name on the site.
+        role:
+          $ref: '#/components/schemas/UserRole'
+    BonusAction:
+      type: object
+      description: Something a user or the site did to a zone's bonus.
+      required:
+        - id
+        - serverId
+        - zoneId
+        - zoneBonusId
+        - bonusTypeId
+        - actorId
+        - actionType
+        - bonusDate
+        - reason
+        - metadata
+        - createdAt
+        - actor
+        - zone
+        - bonusType
+        - isReportable
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverId:
+          type: integer
+        zoneId:
+          type: string
+          format: uuid
+        zoneBonusId:
+          type: [ string, 'null' ]
+          format: uuid
+          description: The `id` of the zone bonus the action was about.
+        bonusTypeId:
+          type: [ string, 'null' ]
+          format: uuid
+        actorId:
+          type: string
+          format: uuid
+        actionType:
+          $ref: '#/components/schemas/BonusActionType'
+        bonusDate:
+          $ref: '#/components/schemas/BonusDateTime'
+        reason:
+          type: [ string, 'null' ]
+          description: Why, when the action needs a reason, such as a moderator's removal.
+        metadata:
+          type: [ object, 'null' ]
+          description: Extra details. Reports carry `bonusKey`; reports sent with an API key also carry `source`.
+          properties:
+            bonusKey:
+              $ref: '#/components/schemas/BonusKey'
+            source:
+              type: string
+              examples: [ client_log_signal ]
+        createdAt:
+          type: string
+          format: date-time
+        actor:
+          $ref: '#/components/schemas/UserSummary'
+        zone:
+          $ref: '#/components/schemas/ZoneRecord'
+        bonusType:
+          oneOf:
+            - $ref: '#/components/schemas/BonusTypeRecord'
+            - type: 'null'
+        isReportable:
+          type: boolean
+          description: Whether users can report this action to moderators.
+    BonusActionType:
+      type: string
+      description: |
+        - `ADD`: reported a bonus.
+        - `REMOVE`: removed a bonus.
+        - `FLAG_REMOVAL`, `CONFIRM_REMOVAL`, `CANCEL_REMOVAL`: steps in asking for a bonus to be removed.
+        - `ADMIN_REMOVE`, `ADMIN_RESTORE`: a moderator removed or restored a bonus.
+        - `REPORT`: reported another action to moderators.
+        - `IMPORT`: brought in from the site's earlier data.
+      enum: [ ADD, REMOVE, FLAG_REMOVAL, CONFIRM_REMOVAL, CANCEL_REMOVAL, ADMIN_REMOVE, ADMIN_RESTORE, REPORT, IMPORT ]
+    ZoneBonusHistory:
+      type: object
+      required: [ zone, history, stats ]
+      properties:
+        zone:
+          $ref: '#/components/schemas/Zone'
+        history:
+          type: array
+          description: Newest first.
+          items:
+            type: object
+            required: [ id, bonusDate, bonus, bonusLabel, state ]
+            properties:
+              id:
+                type: string
+                format: uuid
+              bonusDate:
+                type: string
+                format: date
+              bonus:
+                $ref: '#/components/schemas/BonusKey'
+              bonusLabel:
+                type: string
+              state:
+                $ref: '#/components/schemas/ZoneBonusState'
+        stats:
+          type: array
+          description: How many days the zone had each bonus. Bonus types it never had are left out.
+          items:
+            type: object
+            required: [ bonusTypeId, bonus, bonusLabel, count ]
+            properties:
+              bonusTypeId:
+                type: string
+                format: uuid
+              bonus:
+                $ref: '#/components/schemas/BonusKey'
+              bonusLabel:
+                type: string
+              count:
+                type: integer
+    ZoneBonusTrends:
+      type: object
+      required: [ bonusTypes, zones ]
+      properties:
+        bonusTypes:
+          type: array
+          description: The server's bonus types, as from `types`.
+          items:
+            $ref: '#/components/schemas/BonusType'
+        zones:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - slug
+              - name
+              - expansion
+              - expansionId
+              - expansionSlug
+              - minLevel
+              - maxLevel
+              - zoneType
+              - counts
+              - total
+            properties:
+              id:
+                type: string
+                format: uuid
+              slug:
+                type: string
+              name:
+                type: string
+              expansion:
+                type: string
+              expansionId:
+                type: string
+                format: uuid
+              expansionSlug:
+                type: string
+              minLevel:
+                $ref: '#/components/schemas/Level'
+              maxLevel:
+                $ref: '#/components/schemas/Level'
+              zoneType:
+                $ref: '#/components/schemas/ZoneType'
+              counts:
+                type: object
+                description: For each of the server's bonus keys, how many days the zone had that bonus.
+                additionalProperties:
+                  type: integer
+              total:
+                type: integer
+                description: The number of days counted.
+    EncounterSummaryUpload:
+      type: object
+      description: One fight's summary, as fzClient sends it.
+      required: [ event, encounter_id, target_name, zone, started_at, ended_at, duration_sec, participants ]
+      properties:
+        event:
+          const: encounter_summary
+        encounter_id:
+          type: string
+          description: The client's own ID for the fight, unique per upload. fzClient sends a UUID without dashes.
+          examples: [ 5f0c3a3e2f5c4d4fa1f4f8f7f3c7a9b1 ]
+        target_name:
+          type: string
+          description: The main enemy in the fight.
+        zone:
+          type: string
+          description: The zone name from the log, or `unknown`.
+        character_name:
+          type: string
+          description: The character whose log this is.
+        character:
+          type: string
+          description: The same as `character_name`.
+        server_name:
+          type: string
+          description: The EverQuest server the character is on.
+          examples: [ Frostreaver ]
+        server:
+          type: string
+          description: The same as `server_name`.
+        character_class:
+          $ref: '#/components/schemas/EqClassOrEmpty'
+        character_class_source:
+          type: string
+          description: '`client_manual` when the user set `character_class` in the client; otherwise empty.'
+          examples: [ client_manual ]
+        character_class_confidence:
+          type: number
+          description: 1 when `character_class` is set; otherwise 0.
+        character_class_evidence:
+          type: array
+          items:
+            type: string
+            examples: [ client_setting ]
+        client_version:
+          type: string
+          examples: [ 1.2.6 ]
+        report_name:
+          type: string
+          description: The report to add the encounter to, by name. Empty to let the site choose.
+        client_provenance:
+          oneOf:
+            - $ref: '#/components/schemas/ClientProvenance'
+            - type: 'null'
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        duration_sec:
+          type: number
+        total_damage:
+          type: integer
+        dps:
+          type: number
+        total_healing:
+          type: integer
+        hps:
+          type: number
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/EncounterParticipantUpload'
+        class_evidence:
+          type: array
+          description: Lines in the log that suggest a character's class.
+          items:
+            $ref: '#/components/schemas/ClassEvidenceUpload'
+    EncounterParticipantUpload:
+      type: object
+      required: [ name, damage, dps, healing, hps, is_player ]
+      properties:
+        name:
+          type: string
+        damage:
+          type: integer
+        dps:
+          type: number
+        healing:
+          type: integer
+        hps:
+          type: number
+        top_ability:
+          type: string
+        top_heal_ability:
+          type: string
+        hit_count:
+          type: integer
+        heal_count:
+          type: integer
+        crit_pct:
+          type: number
+        heal_crit_pct:
+          type: number
+        is_player:
+          type: boolean
+          description: False for a known pet.
+        owner:
+          type: [ string, 'null' ]
+          description: A pet's owner, when known.
+    ClassEvidenceUpload:
+      type: object
+      required: [ character_name, suggested_class, source, confidence, evidence_type, evidence_text, tier ]
+      properties:
+        character_name:
+          type: string
+        suggested_class:
+          $ref: '#/components/schemas/EqClass'
+        source:
+          type: string
+          examples: [ log_detected ]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence_type:
+          type: string
+          examples: [ combat_skill, class_ability, spell, song ]
+        evidence_text:
+          type: string
+          examples: [ Backstab ]
+        tier:
+          type: string
+          examples: [ HARD_EXCLUSIVE, STRONG_EXCLUSIVE ]
+    ClientProvenance:
+      type: object
+      description: How the client read the log, so the site can tell live play from replayed or edited logs.
+      required: [ session_id, mode, started_at_utc, last_observed_at_utc, eligibility, is_upload_eligible ]
+      properties:
+        session_id:
+          type: string
+          description: The client's ID for this log session.
+        mode:
+          type: string
+          enum: [ Live, Replay ]
+        started_at_utc:
+          type: string
+          format: date-time
+        last_observed_at_utc:
+          type: string
+          format: date-time
+        first_observed_at_utc:
+          type: [ string, 'null' ]
+          format: date-time
+        last_line_observed_at_utc:
+          type: [ string, 'null' ]
+          format: date-time
+        first_log_timestamp:
+          type: [ string, 'null' ]
+          format: date-time
+        last_log_timestamp:
+          type: [ string, 'null' ]
+          format: date-time
+        lines_observed:
+          type: integer
+        timestamped_lines:
+          type: integer
+        parsed_events:
+          type: integer
+        out_of_order_timestamp_count:
+          type: integer
+        large_log_gap_count:
+          type: integer
+        large_receive_gap_count:
+          type: integer
+        burst_line_count:
+          type: integer
+        suspicious_burst_count:
+          type: integer
+        observed_wall_clock_seconds:
+          type: number
+        log_time_span_seconds:
+          type: number
+        average_lines_per_second:
+          type: number
+        average_parsed_events_per_second:
+          type: number
+        average_log_lines_per_second:
+          type: number
+        max_lines_per_second:
+          type: integer
+        trust_score:
+          type: number
+        eligibility:
+          type: string
+          enum: [ LiveEligible, LocalReplay, LiveSuspicious ]
+        is_upload_eligible:
+          type: boolean
+    EqClass:
+      type: string
+      enum:
+        - Bard
+        - Beastlord
+        - Berserker
+        - Cleric
+        - Druid
+        - Enchanter
+        - Magician
+        - Monk
+        - Necromancer
+        - Paladin
+        - Ranger
+        - Rogue
+        - Shadow Knight
+        - Shaman
+        - Warrior
+        - Wizard
+    EqClassOrEmpty:
+      description: An EverQuest class, or empty when not known.
+      anyOf:
+        - $ref: '#/components/schemas/EqClass'
+        - const: ''
+    ParseMetric:
+      type: string
+      enum:
+        - DAMAGE
+        - HEALING
+    IdSlugName:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+    ServerRef:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+    GuildRef:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+    UserRef:
+      type: object
+      required:
+        - id
+        - username
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+    ExpansionRef:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - sortOrder
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        sortOrder:
+          type: integer
+    Guild:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - description
+        - server
+        - counts
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+        server:
+          $ref: "#/components/schemas/ServerRef"
+        counts:
+          type: object
+          required:
+            - uploads
+            - encounters
+            - members
+            - uploadCodes
+            - inviteCodes
+            - bossKills
+            - objectiveCompletions
+          properties:
+            uploads:
+              type: integer
+            encounters:
+              type: integer
+            members:
+              type: integer
+            uploadCodes:
+              type: integer
+            inviteCodes:
+              type: integer
+            bossKills:
+              type: integer
+            objectiveCompletions:
+              type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    GuildMember:
+      type: object
+      required:
+        - id
+        - role
+        - user
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/GuildRole"
+          description: The member's role in the guild.
+        user:
+          type: object
+          required:
+            - id
+            - username
+            - role
+          properties:
+            id:
+              type: string
+              format: uuid
+            username:
+              type: string
+            role:
+              $ref: "#/components/schemas/UserRole"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Report:
+      type: object
+      required:
+        - id
+        - name
+        - displayName
+        - visibility
+        - startedAt
+        - endedAt
+        - firstUploadAt
+        - lastUploadAt
+        - uploadCount
+        - submissionCount
+        - encounterCount
+        - server
+        - guild
+        - createdBy
+        - createdAt
+        - updatedAt
+        - isInvalid
+        - isHidden
+        - moderatedAt
+        - moderatedById
+        - moderationReason
+        - deletedAt
+        - deletedById
+        - deleteReason
+        - openContentReportCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        displayName:
+          type: string
+        visibility:
+          type: string
+          description: Only `PUBLIC` was observed.
+          examples:
+            - PUBLIC
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        firstUploadAt:
+          type: string
+          format: date-time
+        lastUploadAt:
+          type: string
+          format: date-time
+        uploadCount:
+          type: integer
+        submissionCount:
+          type: integer
+        encounterCount:
+          type: integer
+        server:
+          $ref: "#/components/schemas/ServerRef"
+        guild:
+          $ref: "#/components/schemas/GuildRef"
+        createdBy:
+          $ref: "#/components/schemas/UserRef"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isInvalid:
+          type: boolean
+        isHidden:
+          type: boolean
+        moderatedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        moderatedById:
+          type:
+            - string
+            - "null"
+          format: uuid
+        moderationReason:
+          type:
+            - string
+            - "null"
+        deletedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        deletedById:
+          type:
+            - string
+            - "null"
+          format: uuid
+        deleteReason:
+          type:
+            - string
+            - "null"
+        openContentReportCount:
+          type: integer
+    EncounterSummary:
+      type: object
+      required:
+        - id
+        - reportId
+        - zone
+        - targetName
+        - startedAt
+        - endedAt
+        - durationSec
+        - result
+        - totalDamage
+        - dps
+        - totalHealing
+        - hps
+        - playerCount
+        - rankingEligible
+        - rankingIneligibleReason
+        - participantCount
+        - contributorCount
+        - coverageLabel
+        - server
+        - guild
+        - raidBoss
+        - raidTier
+        - rankingPartition
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        reportId:
+          type: string
+          format: uuid
+        zone:
+          type: string
+        targetName:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSec:
+          type: integer
+        result:
+          type: string
+          description: Only `UNKNOWN` was observed.
+          examples:
+            - UNKNOWN
+        totalDamage:
+          type: integer
+        dps:
+          type: number
+        totalHealing:
+          type: integer
+        hps:
+          type: number
+        playerCount:
+          type: integer
+        rankingEligible:
+          type: boolean
+        rankingIneligibleReason:
+          type:
+            - string
+            - "null"
+          description: Why the encounter doesn't count for rankings. Only `UNMATCHED_RAID_BOSS` was observed.
+          examples:
+            - UNMATCHED_RAID_BOSS
+        participantCount:
+          type: integer
+        contributorCount:
+          type: integer
+        coverageLabel:
+          type: string
+          description: How many uploaders saw the fight.
+          examples:
+            - single-pov
+            - multi-pov
+            - fuller-coverage
+        server:
+          $ref: "#/components/schemas/ServerRef"
+        guild:
+          $ref: "#/components/schemas/GuildRef"
+        raidBoss:
+          type:
+            - object
+            - "null"
+          description: The raid boss the encounter was matched to. Always null in the data seen, so its fields are not described.
+        raidTier:
+          type:
+            - object
+            - "null"
+          description: The matched raid tier. Always null in the data seen.
+        rankingPartition:
+          type:
+            - object
+            - "null"
+          description: The matched ranking partition. Always null in the data seen.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    EncounterDetail:
+      allOf:
+        - $ref: "#/components/schemas/EncounterSummary"
+        - type: object
+          required:
+            - participants
+            - submissions
+          properties:
+            participants:
+              type: array
+              items:
+                $ref: "#/components/schemas/EncounterParticipant"
+            submissions:
+              type: array
+              items:
+                $ref: "#/components/schemas/EncounterSubmission"
+    EncounterParticipant:
+      type: object
+      required:
+        - id
+        - name
+        - damage
+        - dps
+        - healing
+        - hps
+        - topAbility
+        - topHealAbility
+        - hitCount
+        - healCount
+        - critPercent
+        - healCritPercent
+        - isPlayer
+        - participantKind
+        - ownerName
+        - character
+        - ownerCharacter
+        - parseRecord
+        - healingParseRecord
+        - parseRecords
+        - metrics
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        damage:
+          type: integer
+        dps:
+          type: number
+        healing:
+          type: integer
+        hps:
+          type: number
+        topAbility:
+          type: string
+        topHealAbility:
+          type: string
+        hitCount:
+          type: integer
+        healCount:
+          type: integer
+        critPercent:
+          type: number
+        healCritPercent:
+          type: number
+        isPlayer:
+          type: boolean
+        participantKind:
+          type: string
+          description: Only `PLAYER` was observed.
+          examples:
+            - PLAYER
+        ownerName:
+          type:
+            - string
+            - "null"
+          description: For a pet, its owner's name.
+        character:
+          type:
+            - object
+            - "null"
+          description: The character this participant was matched to. Null when the site hasn't matched one.
+          required:
+            - id
+            - name
+            - normalizedName
+            - className
+            - level
+            - isPet
+            - ownerName
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            normalizedName:
+              type: string
+            className:
+              type:
+                - string
+                - "null"
+            level:
+              type:
+                - integer
+                - "null"
+            isPet:
+              type: boolean
+            ownerName:
+              type:
+                - string
+                - "null"
+        ownerCharacter:
+          type:
+            - object
+            - "null"
+          description: For a pet, the owner's character. Not observed, so its fields are not described.
+        parseRecord:
+          type:
+            - object
+            - "null"
+          description: The damage parse record, when the fight is ranked. Not observed.
+        healingParseRecord:
+          type:
+            - object
+            - "null"
+          description: The healing parse record, when the fight is ranked. Not observed.
+        parseRecords:
+          type: array
+          items:
+            type: object
+        metrics:
+          type: object
+          required:
+            - displayDamage
+            - damageSharePercent
+            - displayHealing
+            - healingSharePercent
+            - directDamage
+            - petDamage
+            - totalDamage
+            - directHitCount
+            - petHitCount
+            - totalHitCount
+            - directHealing
+            - petHealing
+            - totalHealing
+            - directHealCount
+            - petHealCount
+            - totalHealCount
+            - hps
+          properties:
+            displayDamage:
+              type: integer
+            damageSharePercent:
+              type: number
+            displayHealing:
+              type: integer
+            healingSharePercent:
+              type: number
+            directDamage:
+              type: integer
+            petDamage:
+              type: integer
+            totalDamage:
+              type: integer
+            directHitCount:
+              type: integer
+            petHitCount:
+              type: integer
+            totalHitCount:
+              type: integer
+            directHealing:
+              type: integer
+            petHealing:
+              type: integer
+            totalHealing:
+              type: integer
+            directHealCount:
+              type: integer
+            petHealCount:
+              type: integer
+            totalHealCount:
+              type: integer
+            hps:
+              type: number
+    EncounterSubmission:
+      type: object
+      required:
+        - id
+        - clientEncounterId
+        - receivedAt
+        - mergedAt
+        - uploadedBy
+        - reportUpload
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientEncounterId:
+          type: string
+        receivedAt:
+          type: string
+          format: date-time
+        mergedAt:
+          type: string
+          format: date-time
+        uploadedBy:
+          $ref: "#/components/schemas/UserRef"
+        reportUpload:
+          type: object
+          required:
+            - id
+            - destination
+            - visibility
+            - clientVersion
+            - integrityStatus
+            - rankingEligible
+            - rankingIneligibleReason
+            - receivedAt
+          properties:
+            id:
+              type: string
+              format: uuid
+            destination:
+              type: string
+              description: Only `GUILD` was observed.
+              examples:
+                - GUILD
+            visibility:
+              type: string
+              examples:
+                - PUBLIC
+            clientVersion:
+              type: string
+            integrityStatus:
+              type: string
+              description: Only `NOT_CHECKED` was observed.
+              examples:
+                - NOT_CHECKED
+            rankingEligible:
+              type: boolean
+            rankingIneligibleReason:
+              type:
+                - string
+                - "null"
+            receivedAt:
+              type: string
+              format: date-time
+    CharacterProfile:
+      type: object
+      required:
+        - id
+        - name
+        - normalizedName
+        - className
+        - classSource
+        - classConfidence
+        - classLocked
+        - classUpdatedAt
+        - level
+        - isPet
+        - ownerName
+        - server
+        - guild
+        - counts
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        normalizedName:
+          type: string
+        className:
+          type:
+            - string
+            - "null"
+        classSource:
+          type:
+            - string
+            - "null"
+          description: How the class was set. Not observed with a value.
+        classConfidence:
+          type:
+            - number
+            - string
+            - "null"
+          description: How sure the site is of the class. Not observed with a value.
+        classLocked:
+          type: boolean
+        classUpdatedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        level:
+          type:
+            - integer
+            - "null"
+        isPet:
+          type: boolean
+        ownerName:
+          type:
+            - string
+            - "null"
+        server:
+          $ref: "#/components/schemas/ServerRef"
+        guild:
+          oneOf:
+            - $ref: "#/components/schemas/GuildRef"
+            - type: "null"
+        counts:
+          type: object
+          required:
+            - damageParses
+            - healingParses
+          properties:
+            damageParses:
+              type: integer
+            healingParses:
+              type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AllStarStandings:
+      type: object
+      required:
+        - snapshot
+        - filters
+        - standings
+        - totalStandings
+      properties:
+        snapshot:
+          type:
+            - object
+            - "null"
+          description: The snapshot the standings come from. Null in the data seen, so its fields are not described.
+        filters:
+          type: object
+          description: The filters the server applied.
+          required:
+            - serverId
+            - rankingPartitionId
+            - metric
+          properties:
+            serverId:
+              type: integer
+            rankingPartitionId:
+              type: string
+              format: uuid
+            metric:
+              $ref: "#/components/schemas/ParseMetric"
+            expansionId:
+              type:
+                - string
+                - "null"
+              format: uuid
+        standings:
+          type: array
+          description: The site reads `averagePercentile` from each item. The other fields were not observed.
+          items:
+            type: object
+        totalStandings:
+          type: integer
+    ServerProgression:
+      type: object
+      required:
+        - server
+        - progression
+        - raidContent
+      properties:
+        server:
+          $ref: "#/components/schemas/ServerRef"
+        progression:
+          type: object
+          required:
+            - expansions
+          properties:
+            expansions:
+              type: array
+              items:
+                type: object
+                required:
+                  - id
+                  - slug
+                  - name
+                  - sortOrder
+                  - tiers
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  slug:
+                    type: string
+                  name:
+                    type: string
+                  sortOrder:
+                    type: integer
+                  tiers:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - id
+                        - slug
+                        - name
+                        - sortOrder
+                        - rankingPartitions
+                        - objectives
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        slug:
+                          type: string
+                        name:
+                          type: string
+                        sortOrder:
+                          type: integer
+                        rankingPartitions:
+                          type: array
+                          items:
+                            type: object
+                        objectives:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/ServerObjective"
+        raidContent:
+          type: object
+          required:
+            - activeRankingPartition
+            - expansions
+            - raidTiers
+            - rankingPartitions
+            - server
+          properties:
+            activeRankingPartition:
+              oneOf:
+                - $ref: "#/components/schemas/RankingPartition"
+                - type: "null"
+            expansions:
+              type: array
+              items:
+                type: object
+                required:
+                  - id
+                  - expansionId
+                  - slug
+                  - name
+                  - sortOrder
+                  - globallyActive
+                  - isActive
+                  - effectivelyActive
+                  - unlocksAt
+                  - notes
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  expansionId:
+                    type: string
+                    format: uuid
+                  slug:
+                    type: string
+                  name:
+                    type: string
+                  sortOrder:
+                    type: integer
+                  globallyActive:
+                    type: boolean
+                  isActive:
+                    type: boolean
+                  effectivelyActive:
+                    type: boolean
+                  unlocksAt:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  notes:
+                    type:
+                      - string
+                      - "null"
+            raidTiers:
+              type: array
+              items:
+                type: object
+                required:
+                  - id
+                  - raidTierId
+                  - expansionId
+                  - slug
+                  - name
+                  - sortOrder
+                  - globallyActive
+                  - isActive
+                  - effectivelyActive
+                  - unlocksAt
+                  - notes
+                  - expansion
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  raidTierId:
+                    type: string
+                    format: uuid
+                  expansionId:
+                    type: string
+                    format: uuid
+                  slug:
+                    type: string
+                  name:
+                    type: string
+                  sortOrder:
+                    type: integer
+                  globallyActive:
+                    type: boolean
+                  isActive:
+                    type: boolean
+                  effectivelyActive:
+                    type: boolean
+                  unlocksAt:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  notes:
+                    type:
+                      - string
+                      - "null"
+                  expansion:
+                    type: object
+                    required:
+                      - id
+                      - slug
+                      - name
+                      - sortOrder
+                      - isActive
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      slug:
+                        type: string
+                      name:
+                        type: string
+                      sortOrder:
+                        type: integer
+                      isActive:
+                        type: boolean
+            rankingPartitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/RankingPartition"
+            server:
+              $ref: "#/components/schemas/ServerRef"
+    RankingPartition:
+      type: object
+      description: A time-boxed ranking period for a raid tier on one server. Use `rankingPartitionId` in the rankings operations.
+      required:
+        - id
+        - rankingPartitionId
+        - raidTierId
+        - anchorExpansionId
+        - slug
+        - name
+        - sortOrder
+        - globalIsDefault
+        - globalIsFrozen
+        - globalStartsAt
+        - globalEndsAt
+        - isActive
+        - isFrozen
+        - effectivelyFrozen
+        - startsAt
+        - endsAt
+        - notes
+        - anchorExpansion
+        - includedExpansions
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: This server's setting for the partition.
+        rankingPartitionId:
+          type: string
+          format: uuid
+          description: The partition itself.
+        raidTierId:
+          type: string
+          format: uuid
+        anchorExpansionId:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        sortOrder:
+          type: integer
+        globalIsDefault:
+          type: boolean
+        globalIsFrozen:
+          type: boolean
+        globalStartsAt:
+          type: string
+          format: date-time
+        globalEndsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        isActive:
+          type: boolean
+        isFrozen:
+          type: boolean
+        effectivelyFrozen:
+          type: boolean
+        startsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        endsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        notes:
+          type:
+            - string
+            - "null"
+        anchorExpansion:
+          $ref: "#/components/schemas/ExpansionRef"
+        includedExpansions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpansionRef"
+    RaidBossRef:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - isProgressionRelevant
+        - isLeaderboardRelevant
+        - raidZone
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        isProgressionRelevant:
+          type: boolean
+        isLeaderboardRelevant:
+          type: boolean
+        raidZone:
+          type: object
+          required:
+            - id
+            - slug
+            - name
+            - shortName
+          properties:
+            id:
+              type: string
+              format: uuid
+            slug:
+              type: string
+            name:
+              type: string
+            shortName:
+              type:
+                - string
+                - "null"
+    RequiredBoss:
+      type: object
+      required:
+        - id
+        - sortOrder
+        - isRequired
+        - killed
+        - killedAt
+        - firstKill
+        - topKills
+        - raidBoss
+      properties:
+        id:
+          type: string
+          format: uuid
+        sortOrder:
+          type: integer
+        isRequired:
+          type: boolean
+        killed:
+          type: boolean
+        killedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        firstKill:
+          type:
+            - object
+            - "null"
+          description: The first kill. Not observed with a value, so its fields are not described.
+        topKills:
+          type: array
+          items:
+            type: object
+        raidBoss:
+          $ref: "#/components/schemas/RaidBossRef"
+    ServerObjective:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - description
+        - completionMode
+        - requiredCount
+        - completionTarget
+        - requiredBossCount
+        - sortOrder
+        - isActive
+        - isProgressionRelevant
+        - expansion
+        - raidTier
+        - completionCount
+        - firstCompletion
+        - topCompletions
+        - recentCompletions
+        - requiredBosses
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+        completionMode:
+          type: string
+          description: How the objective is completed. Only `ALL_REQUIRED` was observed.
+          examples:
+            - ALL_REQUIRED
+        requiredCount:
+          type:
+            - integer
+            - "null"
+        completionTarget:
+          type: integer
+        requiredBossCount:
+          type: integer
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        isProgressionRelevant:
+          type: boolean
+        expansion:
+          $ref: "#/components/schemas/ExpansionRef"
+        raidTier:
+          type: object
+          required:
+            - id
+            - slug
+            - name
+            - sortOrder
+            - rankingPartitions
+          properties:
+            id:
+              type: string
+              format: uuid
+            slug:
+              type: string
+            name:
+              type: string
+            sortOrder:
+              type: integer
+            rankingPartitions:
+              type: array
+              items:
+                type: object
+        completionCount:
+          type: integer
+        firstCompletion:
+          type:
+            - object
+            - "null"
+        topCompletions:
+          type: array
+          items:
+            type: object
+        recentCompletions:
+          type: array
+          items:
+            type: object
+        requiredBosses:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequiredBoss"
+    GuildObjective:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - description
+        - completionMode
+        - requiredCount
+        - completionTarget
+        - requiredBossCount
+        - killedRequiredCount
+        - isComplete
+        - completedAt
+        - expansion
+        - raidTier
+        - requiredBosses
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+        completionMode:
+          type: string
+          examples:
+            - ALL_REQUIRED
+        requiredCount:
+          type:
+            - integer
+            - "null"
+        completionTarget:
+          type: integer
+        requiredBossCount:
+          type: integer
+        killedRequiredCount:
+          type: integer
+        isComplete:
+          type: boolean
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        expansion:
+          $ref: "#/components/schemas/ExpansionRef"
+        raidTier:
+          type: object
+          required:
+            - id
+            - slug
+            - name
+            - sortOrder
+          properties:
+            id:
+              type: string
+              format: uuid
+            slug:
+              type: string
+            name:
+              type: string
+            sortOrder:
+              type: integer
+        requiredBosses:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequiredBoss"
+    UserRole:
+      type: string
+      description: "`ADMINISTRATOR` and `SYSOP` are the site's admins."
+      enum:
+        - MEMBER
+        - MODERATOR
+        - ADMINISTRATOR
+        - SYSOP
+    GuildRole:
+      type: string
+      enum:
+        - MEMBER
+        - OFFICER
+        - ADMIN
+        - OWNER
+    SessionUser:
+      type: object
+      required:
+        - id
+        - username
+        - role
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+      description: "The signed-in user. Not verified against the live API: only the fields the website reads are listed."
+    ApiKeyStatus:
+      type: object
+      required:
+        - hasApiKey
+      properties:
+        hasApiKey:
+          type: boolean
+        maskedApiKey:
+          type:
+            - string
+            - "null"
+      description: "Not verified against the live API: only the fields the website reads are listed."
+    GuildMembership:
+      type: object
+      required:
+        - id
+        - role
+        - guild
+      properties:
+        id:
+          type: string
+        role:
+          $ref: "#/components/schemas/GuildRole"
+        guild:
+          $ref: "#/components/schemas/Guild"
+      description: "Not verified against the live API: only the fields the website reads are listed."
+    CreateGuildRequest:
+      type: object
+      required:
+        - serverId
+        - name
+      properties:
+        serverId:
+          type: integer
+          description: The numeric `id` from `GET /api/servers`.
+        name:
+          type: string
+        description:
+          type: string
+          description: Optional.
+    UploadCode:
+      type: object
+      required:
+        - id
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: string
+        label:
+          type:
+            - string
+            - "null"
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type:
+            - string
+            - "null"
+        code:
+          type: string
+          description: The code itself. Present when the code is created.
+      description: "Not verified against the live API: only the fields the website reads are listed."
+    InviteCode:
+      type: object
+      required:
+        - id
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: string
+        label:
+          type:
+            - string
+            - "null"
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type:
+            - string
+            - "null"
+        code:
+          type: string
+          description: The code itself. Present when the code is created.
+      description: "Not verified against the live API: only the fields the website reads are listed."

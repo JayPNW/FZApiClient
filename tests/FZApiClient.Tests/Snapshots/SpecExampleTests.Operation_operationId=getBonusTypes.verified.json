@@ -1,0 +1,31 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/bonuses/types",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": [
+    {
+      "id": "87b99f7c-af3e-4b01-96ed-b8ec015612f1",
+      "key": "experience",
+      "label": "Experience",
+      "sortOrder": 10
+    },
+    {
+      "id": "5cd4260c-9531-48d5-9b62-a9dfc9c6ed21",
+      "key": "rare",
+      "label": "Rare Spawn",
+      "sortOrder": 50
+    },
+    {
+      "id": "9c7c3f71-8094-44d9-b041-7df50b4e001e",
+      "key": "none",
+      "label": "No Bonus",
+      "sortOrder": 999
+    }
+  ]
+}

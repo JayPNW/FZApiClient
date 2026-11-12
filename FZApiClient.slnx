@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FZApiClient/FZApiClient.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FZApiClient.Tests/FZApiClient.Tests.csproj" />
+  </Folder>
+</Solution>

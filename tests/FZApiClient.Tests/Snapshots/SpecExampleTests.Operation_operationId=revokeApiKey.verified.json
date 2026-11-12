@@ -1,0 +1,14 @@
+﻿{
+  "requests": [
+    {
+      "method": "DELETE",
+      "url": "https://frostreaver.zone/api/me/api-key",
+      "headers": {
+        "Cookie": "fz.sid=test-session"
+      },
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": null
+}

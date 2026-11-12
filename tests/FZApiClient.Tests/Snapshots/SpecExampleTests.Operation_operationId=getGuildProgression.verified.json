@@ -1,0 +1,74 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/guilds/11111111-1111-4111-8111-111111111111/progression",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "guild": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "name": "Second Example Guild",
+      "slug": "second-example-guild",
+      "server": {
+        "id": 1,
+        "name": "Fangbreaker",
+        "slug": "fangbreaker"
+      }
+    },
+    "objectives": [
+      {
+        "id": "928ac5d2-57de-43ea-8391-689494e5672a",
+        "slug": "classic-raids",
+        "name": "Classic Raids",
+        "description": null,
+        "completionMode": "ALL_REQUIRED",
+        "requiredCount": null,
+        "completionTarget": 6,
+        "requiredBossCount": 6,
+        "killedRequiredCount": 0,
+        "isComplete": false,
+        "completedAt": null,
+        "expansion": {
+          "id": "1d0ee73f-7e7a-46bf-b691-8d3424751ab5",
+          "slug": "classic",
+          "name": "Classic",
+          "sortOrder": 10
+        },
+        "raidTier": {
+          "id": "32f92ee5-e6cc-459b-8752-2a8af734418d",
+          "slug": "classic",
+          "name": "Classic",
+          "sortOrder": 10
+        },
+        "requiredBosses": [
+          {
+            "id": "ba35fd27-c752-471e-a203-08975111418e",
+            "sortOrder": 10,
+            "isRequired": true,
+            "killed": false,
+            "killedAt": null,
+            "firstKill": null,
+            "topKills": [],
+            "raidBoss": {
+              "id": "05c960bb-fc49-4c94-a344-4f7c116e9b81",
+              "slug": "classic-phinigel-autropos",
+              "name": "Phinigel Autropos",
+              "isProgressionRelevant": true,
+              "isLeaderboardRelevant": true,
+              "raidZone": {
+                "id": "96e41921-bd44-4981-8a55-635ee46656bf",
+                "slug": "kedge-keep",
+                "name": "Kedge Keep",
+                "shortName": null
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

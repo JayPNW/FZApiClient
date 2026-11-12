@@ -1,0 +1,65 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/characters/11111111-1111-4111-8111-111111111111?metric=DAMAGE",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "metric": "DAMAGE",
+    "metricLabel": "damage",
+    "character": {
+      "id": "00000000-0000-4000-8000-000000000008",
+      "name": "Examplechar",
+      "normalizedName": "examplechar",
+      "className": null,
+      "classSource": null,
+      "classConfidence": null,
+      "classLocked": false,
+      "classUpdatedAt": null,
+      "level": null,
+      "isPet": false,
+      "ownerName": null,
+      "server": {
+        "id": 1,
+        "name": "Fangbreaker",
+        "slug": "fangbreaker"
+      },
+      "guild": null,
+      "counts": {
+        "damageParses": 0,
+        "healingParses": 0
+      },
+      "createdAt": "2026-06-23T17:58:12.876+00:00",
+      "updatedAt": "2026-06-23T18:59:05.63+00:00"
+    },
+    "classOptions": [
+      "Bard",
+      "Cleric",
+      "Druid",
+      "Enchanter",
+      "Magician",
+      "Monk",
+      "Necromancer",
+      "Paladin",
+      "Ranger",
+      "Rogue",
+      "Shadow Knight",
+      "Shaman",
+      "Warrior",
+      "Wizard",
+      "Beastlord",
+      "Berserker"
+    ],
+    "permissions": {
+      "canManageClass": false
+    },
+    "bestParseTiers": [],
+    "expansionGroups": [],
+    "allStarRanks": [],
+    "recentParses": []
+  }
+}

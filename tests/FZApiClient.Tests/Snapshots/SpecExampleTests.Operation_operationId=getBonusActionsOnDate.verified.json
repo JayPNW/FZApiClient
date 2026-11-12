@@ -1,0 +1,57 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/bonuses/history/logs?date=2026-11-10",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "serverId": 1,
+      "zoneId": "be27703f-28c8-4fde-ad5d-6fb3e691e070",
+      "zoneBonusId": "24c0ef76-a47f-4b16-8709-79d27f0130ca",
+      "bonusTypeId": "fa365f41-8ec6-4a1a-96ec-d42f651bd01e",
+      "actorId": "00000000-0000-4000-8000-000000000002",
+      "actionType": "ADD",
+      "bonusDate": "2026-11-10T00:00:00+00:00",
+      "reason": null,
+      "metadata": {
+        "bonusKey": "aa",
+        "source": "client_log_signal"
+      },
+      "createdAt": "2026-11-10T09:26:20.2+00:00",
+      "actor": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "username": "ExampleUser",
+        "role": "MEMBER"
+      },
+      "zone": {
+        "id": "be27703f-28c8-4fde-ad5d-6fb3e691e070",
+        "slug": "wall-of-slaughter",
+        "name": "Wall of Slaughter",
+        "expansionId": "935d6206-7c25-4559-a321-406a8648d584",
+        "minLevel": 65,
+        "maxLevel": 75,
+        "zoneType": null,
+        "legacyZoneId": null,
+        "isActive": true,
+        "createdAt": "2026-07-24T15:57:13.74+00:00",
+        "updatedAt": "2026-07-24T15:57:13.74+00:00"
+      },
+      "bonusType": {
+        "isSystem": true,
+        "createdAt": "2026-05-21T01:14:20.47+00:00",
+        "updatedAt": "2026-11-13T01:37:57.738+00:00",
+        "id": "fa365f41-8ec6-4a1a-96ec-d42f651bd01e",
+        "key": "aa",
+        "label": "AA",
+        "sortOrder": 20
+      },
+      "isReportable": true
+    }
+  ]
+}

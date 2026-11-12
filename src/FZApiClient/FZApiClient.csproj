@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>FZApiClient</PackageId>
+    <RootNamespace>FZApi</RootNamespace>
+    <!-- CI adds a prerelease suffix, such as 0.1.0-ci.42. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Description>A .NET client for the Frostreaver.zone and Fangbreaker.zone API: zone bonuses, raid parses, rankings and guilds.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FZApiClient.Tests" />
+  </ItemGroup>
+
+</Project>

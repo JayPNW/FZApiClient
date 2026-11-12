@@ -1,0 +1,49 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/Frostreaver/bonuses/today",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": [
+    {
+      "id": null,
+      "zoneId": "38bd03f2-006f-49c1-ab10-267831ec9760",
+      "zoneSlug": "abysmal-sea",
+      "name": "Abysmal Sea",
+      "expansion": "Gates of Discord",
+      "expansionId": "2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3",
+      "expansionSlug": "gates-of-discord",
+      "minLevel": 1,
+      "maxLevel": 75,
+      "zoneType": "Outdoor",
+      "bonusTypeId": null,
+      "bonus": "unconfirmed",
+      "bonusLabel": "Unconfirmed",
+      "state": "UNCONFIRMED",
+      "bonusDate": "2026-11-12",
+      "pendingRemovalBy": null
+    },
+    {
+      "id": "c460f872-a5c2-455f-b63f-22ed6edbd7f4",
+      "zoneId": "6488a2c2-e609-437d-8758-957e1b07732c",
+      "zoneSlug": "acrylia-caverns",
+      "name": "Acrylia Caverns",
+      "expansion": "Shadows of Luclin",
+      "expansionId": "c65e4be7-9f05-4381-86cd-6b03ec875bdc",
+      "expansionSlug": "shadows-of-luclin",
+      "minLevel": 40,
+      "maxLevel": 60,
+      "zoneType": "Indoor",
+      "bonusTypeId": "5cd4260c-9531-48d5-9b62-a9dfc9c6ed21",
+      "bonus": "rare",
+      "bonusLabel": "Rare Spawn",
+      "state": "ACTIVE",
+      "bonusDate": "2026-11-12",
+      "pendingRemovalBy": null
+    }
+  ]
+}

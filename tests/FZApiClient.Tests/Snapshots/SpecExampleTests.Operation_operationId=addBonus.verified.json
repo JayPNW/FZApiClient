@@ -1,0 +1,17 @@
+﻿{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/bonuses",
+      "headers": {
+        "Cookie": "fz.sid=test-session"
+      },
+      "contentType": "application/json",
+      "body": {
+        "zoneId": "11111111-1111-4111-8111-111111111111",
+        "bonusTypeId": "22222222-2222-4222-8222-222222222222"
+      }
+    }
+  ],
+  "result": null
+}

@@ -1,0 +1,35 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/guilds?serverSlug=fangbreaker",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": [
+    {
+      "id": "00000000-0000-4000-8000-000000000012",
+      "name": "Example Guild",
+      "slug": "example-guild",
+      "description": "Raids Tuesday and Thursday nights.",
+      "server": {
+        "id": 1,
+        "name": "Fangbreaker",
+        "slug": "fangbreaker"
+      },
+      "counts": {
+        "uploads": 0,
+        "encounters": 0,
+        "members": 1,
+        "uploadCodes": 0,
+        "inviteCodes": 0,
+        "bossKills": 0,
+        "objectiveCompletions": 0
+      },
+      "createdAt": "2026-06-09T20:48:36.213+00:00",
+      "updatedAt": "2026-06-09T20:49:30.268+00:00"
+    }
+  ]
+}

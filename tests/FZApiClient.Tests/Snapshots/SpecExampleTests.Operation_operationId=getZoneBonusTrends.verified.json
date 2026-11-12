@@ -1,0 +1,40 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/bonuses/zones/trends?expansion=Classic&expansion=Ruins%20of%20Kunark&startDate=2026-06-01&endDate=2026-06-30",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "bonusTypes": [
+      {
+        "id": "87b99f7c-af3e-4b01-96ed-b8ec015612f1",
+        "key": "experience",
+        "label": "Experience",
+        "sortOrder": 10
+      }
+    ],
+    "zones": [
+      {
+        "id": "8de71326-2b5a-4db2-b5fa-348ff0ab24a8",
+        "slug": "akanon",
+        "name": "Ak'Anon",
+        "expansion": "Classic",
+        "expansionId": "1d0ee73f-7e7a-46bf-b691-8d3424751ab5",
+        "expansionSlug": "classic",
+        "minLevel": 1,
+        "maxLevel": 15,
+        "zoneType": "Indoor",
+        "counts": {
+          "experience": 0,
+          "rare": 1,
+          "none": 78
+        },
+        "total": 90
+      }
+    ]
+  }
+}

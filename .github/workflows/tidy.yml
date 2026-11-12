@@ -1,0 +1,52 @@
+name: Tidy
+
+# Formats the code and updates the snippets in Markdown files,
+# checks that everything still builds and passes,
+# then commits and pushes whatever changed back to the branch.
+# Pushes made with GITHUB_TOKEN don't start new workflow runs, so this can't loop.
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two runs on one branch would race to push, so run them one at a time.
+concurrency:
+  group: tidy-${{ github.ref }}
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Set the commit author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # Each tool's changes go in their own commit, so each has a single intention.
+      - name: Format the code
+        run: |
+          ./tidy
+          git add --all
+          git diff --cached --quiet || git commit --message '. r dotnet format'
+
+      - name: Update the Markdown snippets
+        run: |
+          dotnet tool restore
+          dotnet mdsnippets
+          git add --all
+          git diff --cached --quiet || git commit --message '. d Update snippets in Markdown files'
+
+      - run: ./build-and-test
+
+      - name: Push
+        run: git push origin "HEAD:${{ github.ref_name }}"

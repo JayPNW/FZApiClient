@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Builds, checks formatting, and runs all tests, including the ones that call the live API.
+# Skip those with: ./build-and-test --filter-not-trait "Category=Live"
+
+dotnet test "$@"
