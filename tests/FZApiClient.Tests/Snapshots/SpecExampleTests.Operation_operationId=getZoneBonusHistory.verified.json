@@ -1,0 +1,45 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/bonuses/zones/befallen/history",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "zone": {
+      "expansion": "Classic",
+      "expansionSlug": "classic",
+      "id": "c9b0852f-cacd-48f8-8cab-affb47b5b4c0",
+      "slug": "befallen",
+      "name": "Befallen",
+      "expansionId": "1d0ee73f-7e7a-46bf-b691-8d3424751ab5",
+      "minLevel": 5,
+      "maxLevel": 20,
+      "zoneType": "Indoor",
+      "legacyZoneId": 2,
+      "isActive": true,
+      "createdAt": "2026-05-22T21:09:57.304+00:00",
+      "updatedAt": "2026-05-22T21:09:57.304+00:00"
+    },
+    "history": [
+      {
+        "id": "53425c74-8813-49d5-a510-0e30000e06e0",
+        "bonusDate": "2026-11-12",
+        "bonus": "none",
+        "bonusLabel": "No Bonus",
+        "state": "ACTIVE"
+      }
+    ],
+    "stats": [
+      {
+        "bonusTypeId": "5cd4260c-9531-48d5-9b62-a9dfc9c6ed21",
+        "bonus": "rare",
+        "bonusLabel": "Rare Spawn",
+        "count": 47
+      }
+    ]
+  }
+}

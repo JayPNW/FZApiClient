@@ -1,0 +1,136 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/progression?guildId=11111111-1111-4111-8111-111111111111",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "server": {
+      "id": 1,
+      "name": "Fangbreaker",
+      "slug": "fangbreaker"
+    },
+    "progression": {
+      "expansions": [
+        {
+          "id": "1d0ee73f-7e7a-46bf-b691-8d3424751ab5",
+          "slug": "classic",
+          "name": "Classic",
+          "sortOrder": 10,
+          "tiers": [
+            {
+              "id": "32f92ee5-e6cc-459b-8752-2a8af734418d",
+              "slug": "classic",
+              "name": "Classic",
+              "sortOrder": 10,
+              "rankingPartitions": [],
+              "objectives": [
+                {
+                  "id": "928ac5d2-57de-43ea-8391-689494e5672a",
+                  "slug": "classic-raids",
+                  "name": "Classic Raids",
+                  "description": null,
+                  "completionMode": "ALL_REQUIRED",
+                  "requiredCount": null,
+                  "completionTarget": 6,
+                  "requiredBossCount": 6,
+                  "sortOrder": 10,
+                  "isActive": true,
+                  "isProgressionRelevant": true,
+                  "expansion": {
+                    "id": "1d0ee73f-7e7a-46bf-b691-8d3424751ab5",
+                    "slug": "classic",
+                    "name": "Classic",
+                    "sortOrder": 10
+                  },
+                  "raidTier": {
+                    "id": "32f92ee5-e6cc-459b-8752-2a8af734418d",
+                    "slug": "classic",
+                    "name": "Classic",
+                    "sortOrder": 10,
+                    "rankingPartitions": []
+                  },
+                  "completionCount": 0,
+                  "firstCompletion": null,
+                  "topCompletions": [],
+                  "recentCompletions": [],
+                  "requiredBosses": [
+                    {
+                      "id": "ba35fd27-c752-471e-a203-08975111418e",
+                      "sortOrder": 10,
+                      "isRequired": true,
+                      "killed": false,
+                      "killedAt": null,
+                      "firstKill": null,
+                      "topKills": [],
+                      "raidBoss": {
+                        "id": "05c960bb-fc49-4c94-a344-4f7c116e9b81",
+                        "slug": "classic-phinigel-autropos",
+                        "name": "Phinigel Autropos",
+                        "isProgressionRelevant": true,
+                        "isLeaderboardRelevant": true,
+                        "raidZone": {
+                          "id": "96e41921-bd44-4981-8a55-635ee46656bf",
+                          "slug": "kedge-keep",
+                          "name": "Kedge Keep",
+                          "shortName": null
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "raidContent": {
+      "activeRankingPartition": {
+        "id": "5866f142-6d88-4f4d-af15-b63a5c06eaf5",
+        "rankingPartitionId": "7c328539-6206-4e09-aad7-c51f57206fd2",
+        "raidTierId": "ba717425-8897-459e-b996-beaeff35f13f",
+        "anchorExpansionId": "2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3",
+        "slug": "fangbreaker-god-era",
+        "name": "Gates of Discord Era",
+        "sortOrder": 80,
+        "globalIsDefault": false,
+        "globalIsFrozen": false,
+        "globalStartsAt": "2026-05-28T00:00:00+00:00",
+        "globalEndsAt": null,
+        "isActive": true,
+        "isFrozen": false,
+        "effectivelyFrozen": false,
+        "startsAt": null,
+        "endsAt": null,
+        "notes": null,
+        "anchorExpansion": {
+          "id": "2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3",
+          "slug": "gates-of-discord",
+          "name": "Gates of Discord",
+          "sortOrder": 80
+        },
+        "includedExpansions": [
+          {
+            "id": "2f8e1dd5-fddc-4aa1-b125-54f71e2eb1e3",
+            "slug": "gates-of-discord",
+            "name": "Gates of Discord",
+            "sortOrder": 80
+          }
+        ]
+      },
+      "expansions": [],
+      "raidTiers": [],
+      "rankingPartitions": [],
+      "server": {
+        "id": 1,
+        "name": "Fangbreaker",
+        "slug": "fangbreaker"
+      }
+    }
+  }
+}

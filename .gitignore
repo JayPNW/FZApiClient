@@ -1,0 +1,15 @@
+.ignore/
+.local/
+
+# .NET build output
+bin/
+obj/
+TestResults/
+*.user
+.vs/
+
+# Verify snapshot results that weren't approved
+*.received.*
+
+# Packages from dotnet pack
+artifacts/

@@ -1,0 +1,119 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/encounters/11111111-1111-4111-8111-111111111111",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "participants": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "name": "Examplechar",
+        "damage": 384,
+        "dps": 384,
+        "healing": 0,
+        "hps": 0,
+        "topAbility": "Frenzy",
+        "topHealAbility": "Unknown",
+        "hitCount": 2,
+        "healCount": 0,
+        "critPercent": 0,
+        "healCritPercent": 0,
+        "isPlayer": true,
+        "participantKind": "PLAYER",
+        "ownerName": null,
+        "character": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "name": "Examplechar",
+          "normalizedName": "examplechar",
+          "className": null,
+          "level": null,
+          "isPet": false,
+          "ownerName": null
+        },
+        "ownerCharacter": null,
+        "parseRecord": null,
+        "healingParseRecord": null,
+        "parseRecords": [],
+        "metrics": {
+          "displayDamage": 384,
+          "damageSharePercent": 0,
+          "displayHealing": 0,
+          "healingSharePercent": 0,
+          "directDamage": 384,
+          "petDamage": 0,
+          "totalDamage": 384,
+          "directHitCount": 2,
+          "petHitCount": 0,
+          "totalHitCount": 2,
+          "directHealing": 0,
+          "petHealing": 0,
+          "totalHealing": 0,
+          "directHealCount": 0,
+          "petHealCount": 0,
+          "totalHealCount": 0,
+          "hps": 0
+        }
+      }
+    ],
+    "submissions": [
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "clientEncounterId": "450a4fe551304dab95a16e53eb3d2261",
+        "receivedAt": "2026-06-23T18:59:05.635+00:00",
+        "mergedAt": "2026-06-23T18:59:05.634+00:00",
+        "uploadedBy": {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "username": "ExampleOfficer"
+        },
+        "reportUpload": {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "destination": "GUILD",
+          "visibility": "PUBLIC",
+          "clientVersion": "1.0.0",
+          "integrityStatus": "NOT_CHECKED",
+          "rankingEligible": true,
+          "rankingIneligibleReason": null,
+          "receivedAt": "2026-06-23T18:59:05.615+00:00"
+        }
+      }
+    ],
+    "id": "00000000-0000-4000-8000-000000000004",
+    "reportId": "00000000-0000-4000-8000-000000000005",
+    "zone": "Tacvi, Seat of the Slaver",
+    "targetName": "on Pixtt Kretv Krakxt",
+    "startedAt": "2026-06-23T18:59:04+00:00",
+    "endedAt": "2026-06-23T18:59:04+00:00",
+    "durationSec": 1,
+    "result": "UNKNOWN",
+    "totalDamage": 384,
+    "dps": 384,
+    "totalHealing": 0,
+    "hps": 0,
+    "playerCount": 1,
+    "rankingEligible": false,
+    "rankingIneligibleReason": "UNMATCHED_RAID_BOSS",
+    "participantCount": 1,
+    "contributorCount": 1,
+    "coverageLabel": "single-pov",
+    "server": {
+      "id": 1,
+      "name": "Fangbreaker",
+      "slug": "fangbreaker"
+    },
+    "guild": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "name": "Second Example Guild",
+      "slug": "second-example-guild"
+    },
+    "raidBoss": null,
+    "raidTier": null,
+    "rankingPartition": null,
+    "createdAt": "2026-06-23T18:59:05.628+00:00",
+    "updatedAt": "2026-06-23T18:59:05.628+00:00"
+  }
+}

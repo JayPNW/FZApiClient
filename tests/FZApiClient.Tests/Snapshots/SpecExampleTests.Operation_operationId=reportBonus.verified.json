@@ -1,0 +1,34 @@
+﻿{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://frostreaver.zone/api/client/bonuses",
+      "headers": {
+        "X-API-Key": "fz_live_test"
+      },
+      "contentType": "application/json",
+      "body": {
+        "serverName": "Fangbreaker",
+        "zoneName": "Bastion of Thunder",
+        "bonusKey": "experience"
+      }
+    }
+  ],
+  "result": {
+    "updated": false,
+    "zoneBonus": {
+      "id": "c460f872-a5c2-455f-b63f-22ed6edbd7f4",
+      "serverId": 1,
+      "zoneId": "6488a2c2-e609-437d-8758-957e1b07732c",
+      "bonusTypeId": "5cd4260c-9531-48d5-9b62-a9dfc9c6ed21",
+      "bonusDate": "2026-11-12T00:00:00+00:00",
+      "state": "ACTIVE",
+      "createdById": "00000000-0000-4000-8000-000000000003",
+      "removedById": null,
+      "removedAt": null,
+      "legacyBonusId": null,
+      "createdAt": "2026-11-12T18:45:41.72+00:00",
+      "updatedAt": "2026-11-12T18:45:41.72+00:00"
+    }
+  }
+}

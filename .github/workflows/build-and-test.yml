@@ -1,0 +1,59 @@
+name: build and test
+
+on:
+  schedule:
+    - cron: '37 4 * * 3' # Wednesdays at 04:37 UTC, an arbitrary time to stay off the top-of-the-hour peak.
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - run: ./build-and-test
+
+      - name: Pack a prerelease package
+        run: >-
+          dotnet pack src/FZApiClient --configuration Release --output artifacts
+          -p:VersionSuffix=ci.${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+
+  publish:
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: artifacts
+
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - run: >-
+          dotnet nuget push "artifacts/*.nupkg"
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

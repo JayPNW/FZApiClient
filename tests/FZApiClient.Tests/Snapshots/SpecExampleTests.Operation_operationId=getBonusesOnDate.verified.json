@@ -1,0 +1,31 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/servers/fangbreaker/bonuses/history/date?date=2026-11-11",
+      "headers": {},
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": [
+    {
+      "id": "c7868097-7266-42a4-a84e-87215dcf8d64",
+      "zoneId": "8de71326-2b5a-4db2-b5fa-348ff0ab24a8",
+      "zoneSlug": "akanon",
+      "name": "Ak'Anon",
+      "expansion": "Classic",
+      "expansionId": "1d0ee73f-7e7a-46bf-b691-8d3424751ab5",
+      "expansionSlug": "classic",
+      "minLevel": 1,
+      "maxLevel": 15,
+      "zoneType": "Indoor",
+      "bonusTypeId": "2ca1653f-5610-41d4-b131-7d6ba4b75448",
+      "bonus": "tribute",
+      "bonusLabel": "Tribute",
+      "state": "ACTIVE",
+      "bonusDate": "2026-11-11",
+      "pendingRemovalBy": null
+    }
+  ]
+}

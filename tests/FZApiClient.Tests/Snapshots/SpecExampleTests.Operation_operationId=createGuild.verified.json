@@ -1,0 +1,38 @@
+﻿{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://frostreaver.zone/api/guilds",
+      "headers": {
+        "Cookie": "fz.sid=test-session"
+      },
+      "contentType": "application/json",
+      "body": {
+        "serverId": 1,
+        "name": "Example Guild"
+      }
+    }
+  ],
+  "result": {
+    "id": "00000000-0000-4000-8000-000000000012",
+    "name": "Example Guild",
+    "slug": "example-guild",
+    "description": null,
+    "server": {
+      "id": 1,
+      "name": "Fangbreaker",
+      "slug": "fangbreaker"
+    },
+    "counts": {
+      "uploads": 0,
+      "encounters": 0,
+      "members": 1,
+      "uploadCodes": 0,
+      "inviteCodes": 0,
+      "bossKills": 0,
+      "objectiveCompletions": 0
+    },
+    "createdAt": "2026-06-09T20:48:36.213+00:00",
+    "updatedAt": "2026-06-09T20:49:30.268+00:00"
+  }
+}

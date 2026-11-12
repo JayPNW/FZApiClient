@@ -1,0 +1,17 @@
+﻿{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://frostreaver.zone/api/me/api-key",
+      "headers": {
+        "Cookie": "fz.sid=test-session"
+      },
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": {
+    "hasApiKey": true,
+    "maskedApiKey": "fz_live_****abcd"
+  }
+}

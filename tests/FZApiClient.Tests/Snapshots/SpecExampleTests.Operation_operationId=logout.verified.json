@@ -1,0 +1,14 @@
+﻿{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://frostreaver.zone/api/auth/logout",
+      "headers": {
+        "Cookie": "fz.sid=test-session"
+      },
+      "contentType": null,
+      "body": null
+    }
+  ],
+  "result": null
+}
