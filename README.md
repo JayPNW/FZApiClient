@@ -1,5 +1,8 @@
 # FZApiClient
 
+[![NuGet](https://img.shields.io/nuget/v/FZApiClient.svg)](https://www.nuget.org/packages/FZApiClient)
+[![Build and Test](https://github.com/JayPNW/FZApiClient/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/JayPNW/FZApiClient/actions/workflows/build-and-test.yml)
+
 [OpenAPI documentation](openapi.yaml) and a A .NET client for the [Frostreaver.zone](https://frostreaver.zone)/[fangbreaker.zone](https://fangbreaker.zone) API.
 
 ## .Net usage example
