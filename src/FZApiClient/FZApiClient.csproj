@@ -6,8 +6,11 @@
     <RootNamespace>FZApi</RootNamespace>
     <!-- CI adds a prerelease suffix, such as 0.1.0-ci.42. -->
     <VersionPrefix>0.1.0</VersionPrefix>
-    <Description>A .NET client for the Frostreaver.zone and Fangbreaker.zone API: zone bonuses, raid parses, rankings and guilds.</Description>
+    <Description>A .NET client for the Frosttreaver.zone and Fangbreaker.zone API: zone bonuses, raid parses, rankings and guilds.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/JayPNW/FZApiClient</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/JayPNW/FZApiClient</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
